@@ -1,4 +1,5 @@
 # clean data function (species / sir / bact_genus / submitted_sample)
+import numpy as np
 
 def cleanSpecies(species:str):
     species = species.lower().strip()
@@ -8,11 +9,13 @@ def cleanSpecies(species:str):
 
 def cleanSIR(sir:str):
     sir = sir.lower().strip()
+    if sir == 's' or sir == 'i' or sir == 'r' or sir == '+' or sir == '-':
+        return sir
     if sir == 'neg':
         return '-'
     if sir == 'pos':
         return '+'
-    return sir
+    return np.nan
 
 def cleanBactGenus(bact_species:str):
     bact_species = bact_species.lower().strip()
@@ -49,7 +52,7 @@ def cleanBactGenus(bact_species:str):
 def cleanSubmittedSample(sample:str, vitek_id:str):
     sample = sample.lower().strip()
     vitek_id = vitek_id.lower().strip()
-    if sample == 'unk':
+    if sample == 'unk' or sample == '':
         return 'unknown'
     # ตัดวงเล็บ
     if "(" in sample:
