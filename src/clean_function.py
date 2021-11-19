@@ -8,12 +8,12 @@ def cleanSpecies(species:str):
     return 'other'
 
 def cleanSIR(sir:str):
-    sir = sir.lower().strip()
-    if sir == 's' or sir == 'i' or sir == 'r' or sir == '+' or sir == '-':
+    sir = sir.upper().strip()
+    if sir == 'S' or sir == 'S' or sir == 'R' or sir == '+' or sir == '-':
         return sir
-    if sir == 'neg':
+    if sir == 'NEG':
         return '-'
-    if sir == 'pos':
+    if sir == 'POS':
         return '+'
     return np.nan
 
@@ -57,10 +57,15 @@ def cleanSubmittedSample(sample:str, vitek_id:str):
     # ตัดวงเล็บ
     if "(" in sample:
         sample = sample[:sample.index('(')].strip()
-    # ตัด right / left    
-    cut_list = ['right ', 'rt.', 'rt ', 'left ', 'lt.', 'lt ']
+    # ตัด /
+    if "/" in sample:
+        sample = sample[:sample.index('(')].strip()
+    # ตัด right / left / at / or   
+    cut_list = ['right ', 'rt.', 'r.', 'rt ', 'left ', 'lt.', 'l.', 'lt ', ' at ', ' @ ', ' or ']
     for cut in cut_list:
-        if cut in sample:
+        if (cut == 'rt ' or cut == 'lt ') and sample.startswith(cut):
+            sample = sample.replace(cut, '').strip()
+        elif cut in sample:
             sample = sample.replace(cut, '').strip()
     # special case
     if sample == 'ear':
