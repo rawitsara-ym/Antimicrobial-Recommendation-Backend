@@ -9,7 +9,7 @@ def cleanSpecies(species:str):
 
 def cleanSIR(sir:str):
     sir = sir.upper().strip()
-    if sir == 'S' or sir == 'S' or sir == 'R' or sir == '+' or sir == '-':
+    if sir == 'S' or sir == 'S' or sir == 'R' or sir == 'I' or sir == '+' or sir == '-':
         return sir
     if sir == 'NEG':
         return '-'
