@@ -21,9 +21,8 @@ Backend (FastAPI) ของ Web
 * **Response body [ชื่อยา : %ความมั่นใจของโมเดล] (Example)**\
 {\
   &nbsp;"answer": {\
-    &emsp;"marbofloxacin": 96.49,\
-    &emsp;"amoxicillin/clavulanic acid": 55.17,\
-    &emsp;"enrofloxacin": 50.22\
+    &emsp;"marbofloxacin": 98.92,\
+    &emsp;"enrofloxacin": 94.69\
   &nbsp;}\
 }
 
