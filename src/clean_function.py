@@ -50,6 +50,10 @@ def cleanBactGenus(bact_species:str):
 
     
 def cleanSubmittedSample(sample:str, vitek_id:str):
+    submitted_sample_list_gp = eval(open(
+        "./ml_model/schema/submitted_sample_binning_gp.txt", 'r', encoding='utf-8').read())
+    submitted_sample_list_gn = eval(open(
+        "./ml_model/schema/submitted_sample_binning_gn.txt", 'r', encoding='utf-8').read())
     sample = sample.lower().strip()
     vitek_id = vitek_id.lower().strip()
     if sample == 'unk' or sample == '':
@@ -79,22 +83,10 @@ def cleanSubmittedSample(sample:str, vitek_id:str):
     
     # clean
     if vitek_id == 'gp':
-        startswith_list = ['wound', 'urine', 'ub mucosa', 'swab', 'surgical site',
-            'superficial spreading pyoderma', 'skin swab', 'skin', 'pus',
-            'purulent', 'pleural effusion', 'other', 'open wound',
-            'nasal discharge', 'folliculitis', 'fluid', 'fistula', 'exudate',
-            'epidermal collarette', 'ear exudate', 'ear canal', 'ear',
-            'deep pyoderma', 'deep exudate', 'crust from skin', 'crust',
-            'chronic wound', 'blood', 'bite wound', 'abscess', 'abdominal fluid',
-            'abdominal effusion', 'abdominal cavity', 'abdomen']
+        startswith_list = submitted_sample_list_gp
         contains_list = ['bite wound', 'nasal cavity', 'open wound']
     else:
-        startswith_list = ['wound', 'urine', 'ub mucosa', 'swab', 'surgical site', 'pus',
-            'purulent', 'prostate', 'pleural effusion', 'pg abscess', 'other',
-            'open wound', 'nasal mucosa', 'nasal discharge', 'nasal cavity', 'mass',
-            'fluid', 'fistula', 'exudate', 'ear wax', 'ear swab', 'ear exudate',
-            'ear canal', 'ear', 'chronic wound', 'bite wound', 'abscess',
-            'abdominal fluid', 'abdominal effusion', 'abdominal cavity', 'abdomen']
+        startswith_list = submitted_sample_list_gn
         contains_list = ['bite wound', 'nasal cavity', 'nasal mucosa', 'open wound']
         
     for submitted_sample in startswith_list:        
