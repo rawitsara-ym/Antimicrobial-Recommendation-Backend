@@ -66,12 +66,13 @@ async def predict(petDetail: PetDetail):
     species = cleanSpecies(petDetail.species)
     bact_genus = cleanBactGenus(petDetail.bact_species)
     submitted_sample = cleanSubmittedSample(petDetail.submitted_sample, petDetail.vitek_id)
-    vitek_id = petDetail.vitek_id.lower().strip()
+    vitek_id = petDetail.vitek_id.upper().strip()
     
     req = dict()
     req['species'] = [species]
     req['bact_genus'] = [bact_genus]
     req['submitted_sample'] = [submitted_sample]
+    req['vitek_id'] = [vitek_id]
     for key, value in petDetail.sir.items():
         req[f'S/I/R_{key.lower()}'] = [cleanSIR(value)]
         
@@ -80,7 +81,7 @@ async def predict(petDetail: PetDetail):
 
     # predict answer
     answer = []
-    if vitek_id == 'gp':          
+    if vitek_id == 'GP':          
         X_predict = pd.DataFrame(columns=schema_gp_list)
         X_predict = X_predict.append(req_dummy).loc[:, :schema_gp_list[-1]]
         X_predict.fillna(0, inplace=True)
@@ -89,7 +90,7 @@ async def predict(petDetail: PetDetail):
             if model.predict(X_predict)[0] == True:
                 answer.append(drugName)
                 
-    elif vitek_id == 'gn':
+    elif vitek_id == 'GN':
         X_predict = pd.DataFrame(columns=schema_gn_list)
         X_predict = X_predict.append(req_dummy).loc[:, :schema_gn_list[-1]]
         X_predict.fillna(0, inplace=True)

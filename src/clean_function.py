@@ -9,7 +9,7 @@ def cleanSpecies(species:str):
 
 def cleanSIR(sir:str):
     sir = sir.upper().strip()
-    if sir == 'S' or sir == 'S' or sir == 'R' or sir == 'I' or sir == '+' or sir == '-':
+    if sir == 'S' or sir == 'R' or sir == 'I' or sir == '+' or sir == '-':
         return sir
     if sir == 'NEG':
         return '-'
@@ -54,32 +54,36 @@ def cleanSubmittedSample(sample:str, vitek_id:str):
     vitek_id = vitek_id.lower().strip()
     if sample == 'unk' or sample == '':
         return 'unknown'
-    # ตัดวงเล็บ
-    if "(" in sample:
-        sample = sample[:sample.index('(')].strip()
-    # ตัด /
-    if "/" in sample:
-        sample = sample[:sample.index('(')].strip()
-    # ตัด right / left / at / or   
-    cut_list = ['right ', 'rt.', 'r.', 'rt ', 'left ', 'lt.', 'l.', 'lt ', ' at ', ' @ ', ' or ']
-    for cut in cut_list:
+    
+    # ตัดวงเล็บ, /, at, or   
+    cut_list1 = ["(", "/", ' at ', ' @ ', ' or ']
+    for cut in cut_list1:
+        if cut in sample:
+            sample = sample[:sample.index(cut)].strip()
+    
+    # ตัด right, left   
+    cut_list2 = ['right ', 'rt.', 'r.', 'rt ', 'left ', 'lt.', 'l.', 'lt ']
+    for cut in cut_list2:
         if (cut == 'rt ' or cut == 'lt ') and sample.startswith(cut):
-            sample = sample.replace(cut, '').strip()
+            sample = sample.replace(cut, '').strip()          
         elif cut in sample:
             sample = sample.replace(cut, '').strip()
+                
     # special case
     if sample == 'ear':
         return 'ear'
-    if "opened wound" in sample:
-        return "open wound"
+    if 'opened wound' in sample:
+        return 'open wound'
+    if 'bited wound' in sample:
+        return 'bited wound'
+    
     # clean
     if vitek_id == 'gp':
-        startswith_list = ['wound', 'urine', 'unknown', 'ub mucosa', 'swab', 'surgical wound',
-            'surgical site', 'superficial spreading pyoderma', 'skin swab', 'skin',
-            'screw', 'pyoderma', 'pus', 'purulent', 'prostate', 'pleural effusion',
-            'papule', 'other', 'open wound', 'nasal discharge', 'nasal cavity',
-            'mass', 'folliculitis', 'fluid', 'fistula', 'exudate',
-            'epidermal collarette', 'ear wax', 'ear swab', 'ear exudate', 'ear',
+        startswith_list = ['wound', 'urine', 'ub mucosa', 'swab', 'surgical site',
+            'superficial spreading pyoderma', 'skin swab', 'skin', 'pus',
+            'purulent', 'pleural effusion', 'other', 'open wound',
+            'nasal discharge', 'folliculitis', 'fluid', 'fistula', 'exudate',
+            'epidermal collarette', 'ear exudate', 'ear canal', 'ear',
             'deep pyoderma', 'deep exudate', 'crust from skin', 'crust',
             'chronic wound', 'blood', 'bite wound', 'abscess', 'abdominal fluid',
             'abdominal effusion', 'abdominal cavity', 'abdomen']
@@ -88,10 +92,9 @@ def cleanSubmittedSample(sample:str, vitek_id:str):
         startswith_list = ['wound', 'urine', 'ub mucosa', 'swab', 'surgical site', 'pus',
             'purulent', 'prostate', 'pleural effusion', 'pg abscess', 'other',
             'open wound', 'nasal mucosa', 'nasal discharge', 'nasal cavity', 'mass',
-            'fluid', 'fistula', 'exudate', 'ear wax', 'ear swab', 'ear purulent',
-            'ear exudate', 'ear canal', 'ear', 'chronic wound', 'bite wound',
-            'abscess', 'abdominal fluid', 'abdominal effusion', 'abdominal cavity',
-            'abdomen']
+            'fluid', 'fistula', 'exudate', 'ear wax', 'ear swab', 'ear exudate',
+            'ear canal', 'ear', 'chronic wound', 'bite wound', 'abscess',
+            'abdominal fluid', 'abdominal effusion', 'abdominal cavity', 'abdomen']
         contains_list = ['bite wound', 'nasal cavity', 'nasal mucosa', 'open wound']
         
     for submitted_sample in startswith_list:        
