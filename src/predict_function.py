@@ -11,7 +11,6 @@ def predictor():
                 for anti in schema["GN"].keys()}
 
     def prediction(data: pd.Series):
-        data = data.copy()
         dummies_data_origin = pd.get_dummies(pd.DataFrame(data).T)
         nonlocal schema
         if data.vitek_id == "GP":
@@ -23,13 +22,14 @@ def predictor():
                 dummies_data = get_dummies_dataframe_columns(
                     schema_gp[anti], dummies_data_origin)
                 anti = anti.replace("_", '/')
-                result.append({
+                result_single = {
                     "antimicrobial": anti,
                     "score": model.predict_proba(dummies_data)[:, 1][0],
-                })
-            item_list = [item for item in result if item['score'] >= 0.5]
+                }
+                if result_single["score"] >= 0.5 :
+                    result.append(result_single)
             list_sorted = sorted(
-                item_list, key=lambda item: item['score'], reverse=True)
+                result, key=lambda item: item['score'], reverse=True)
             return {item['antimicrobial']: round(float(item['score'])*100, 2) for item in list_sorted}
         elif data.vitek_id == "GN":
             schema_gn = schema["GN"]
@@ -40,13 +40,14 @@ def predictor():
                 dummies_data = get_dummies_dataframe_columns(
                     schema_gn[anti], dummies_data_origin)
                 anti = anti.replace("_", '/')
-                result.append({
+                result_single = {
                     "antimicrobial": anti,
                     "score": model.predict_proba(dummies_data)[:, 1][0],
-                })
-            item_list = [item for item in result if item['score'] >= 0.5]
+                }
+                if result_single["score"] >= 0.5 :
+                    result.append(result_single)
             list_sorted = sorted(
-                item_list, key=lambda item: item['score'], reverse=True)
+                result, key=lambda item: item['score'], reverse=True)
             return {item['antimicrobial']: round(float(item['score'])*100, 2) for item in list_sorted}
         else:
             return "Not predictable."
@@ -54,7 +55,7 @@ def predictor():
 
 
 def get_dummies_dataframe_columns(cols_name: list, old_df: pd.DataFrame) -> pd.DataFrame:
-    old_df = pd.get_dummies(old_df).filter(cols_name)
+    old_df = old_df.filter(cols_name)
     new_df = pd.DataFrame(columns=cols_name).append(old_df)
     new_df.fillna(0, inplace=True)
     return new_df
