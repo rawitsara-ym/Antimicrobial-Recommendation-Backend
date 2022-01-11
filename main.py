@@ -5,6 +5,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import pandas as pd
 
+import time
+
 class PetDetail(BaseModel):
     species: str
     bact_species: str
@@ -14,6 +16,7 @@ class PetDetail(BaseModel):
 
 
 app = FastAPI()
+prediction = predictor()
 
 
 # @app.get("/")
@@ -22,6 +25,8 @@ app = FastAPI()
 
 @app.post("/api/predict/")
 async def predict(petDetail: PetDetail):
+    start_time = time.time()
+
     species = cleanSpecies(petDetail.species)
     bact_genus = cleanBactGenus(petDetail.bact_species)
     submitted_sample = cleanSubmittedSample(petDetail.submitted_sample, petDetail.vitek_id)
@@ -36,7 +41,8 @@ async def predict(petDetail: PetDetail):
         data[f'S/I/R_{key.lower()}'] = cleanSIR(value)
      
     # predict answer   
-    prediction = predictor()
     result = prediction(pd.Series(data))
     
-    return {'answer': result}
+    end_time = time.time()
+
+    return {'answer': result,'processing_time' : (end_time - start_time)}
