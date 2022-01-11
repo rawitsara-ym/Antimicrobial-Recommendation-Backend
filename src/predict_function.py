@@ -21,7 +21,7 @@ def predictor():
             for anti in schema_gp.keys():
                 model = model_gp[anti]
                 dummies_data = get_dummies_dataframe_columns(
-                    pd.DataFrame(columns=schema_gp[anti]), dummies_data_origin)
+                    schema_gp[anti], dummies_data_origin)
                 anti = anti.replace("_", '/')
                 result.append({
                     "antimicrobial": anti,
@@ -38,7 +38,7 @@ def predictor():
             for anti in schema_gn.keys():
                 model = model_gn[anti]
                 dummies_data = get_dummies_dataframe_columns(
-                    pd.DataFrame(columns=schema_gn[anti]), dummies_data_origin)
+                    schema_gn[anti], dummies_data_origin)
                 anti = anti.replace("_", '/')
                 result.append({
                     "antimicrobial": anti,
@@ -53,8 +53,8 @@ def predictor():
     return prediction
 
 
-def get_dummies_dataframe_columns(df_dummies: pd.DataFrame, old_df: pd.DataFrame) -> pd.DataFrame:
-    old_df = pd.get_dummies(old_df).filter(df_dummies.columns)
-    new_df = pd.DataFrame(columns=list(df_dummies.columns)).append(old_df)
+def get_dummies_dataframe_columns(cols_name: list, old_df: pd.DataFrame) -> pd.DataFrame:
+    old_df = pd.get_dummies(old_df).filter(cols_name)
+    new_df = pd.DataFrame(columns=cols_name).append(old_df)
     new_df.fillna(0, inplace=True)
     return new_df
