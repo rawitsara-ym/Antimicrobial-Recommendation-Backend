@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import pandas as pd
 
-import time
+# import time
 
 class PetDetail(BaseModel):
     species: str
@@ -25,7 +25,7 @@ prediction = predictor()
 
 @app.post("/api/predict/")
 async def predict(petDetail: PetDetail):
-    start_time = time.time()
+    # start_time = time.time()
 
     species = cleanSpecies(petDetail.species)
     bact_genus = cleanBactGenus(petDetail.bact_species)
@@ -43,6 +43,7 @@ async def predict(petDetail: PetDetail):
     # predict answer   
     result = prediction(pd.Series(data))
     
-    end_time = time.time()
+    # end_time = time.time()
 
-    return {'answer': result,'processing_time' : (end_time - start_time)}
+    # return {'answer': result,'processing_time' : (end_time - start_time)}
+    return {'answer': result}
