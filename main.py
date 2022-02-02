@@ -92,6 +92,36 @@ async def vitek_id():
     }
 
 
+@app.get("/api/bacteria_genus/")
+async def bacteria_genus():
+    bacteria_genus = pd.read_sql("SELECT id , name FROM public.bacteria_genus", conn)
+    return {
+        "status": "success",
+        "data": {
+            "bacteria_genus": [
+                {
+                    'id': row[0],
+                    'name': row[1]
+                } for row in bacteria_genus.values
+            ]
+        }
+    }
+
+@app.get("/api/submitted_sample/")
+async def submitted_sample():
+    submitted_sample = pd.read_sql("SELECT id , name FROM public.submitted_sample", conn)
+    return {
+        "status": "success",
+        "data": {
+            "submitted_sample": [
+                {
+                    'id': row[0],
+                    'name': row[1]
+                } for row in submitted_sample.values
+            ]
+        }
+    }
+
 @app.get("/api/antimicrobial_sir/")
 async def antimicrobial_sir(v_id):
     query = sqlalchemy.text(
@@ -134,6 +164,7 @@ async def antimicrobial_sir(v_id):
 
 @app.post("/api/upload/")
 async def upload(vitek_id, background_tasks: BackgroundTasks, in_file: UploadFile = File(...),):
+    print(in_file.content_type)
     with open(f"./upload_file/{hash(time.time())}_{in_file.filename}", mode="wb") as out_file:
         shutil.copyfileobj(in_file.file, out_file)
     
