@@ -31,9 +31,10 @@ app = FastAPI()
 conn = sqlalchemy.create_engine(
     f"postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}/antimicrobial_system")
 
-prediction = predictor()
+# prediction = predictor()
 
-Predictior(conn)
+predictor = Predictior(conn)
+
 
 @app.get("/api/species/")
 async def species():
@@ -51,7 +52,8 @@ async def species():
 
 @app.get("/api/vitek_id/")
 async def vitek_id():
-    vitek_id = pd.read_sql_query("SELECT id , name FROM public.vitek_id_card", conn)
+    vitek_id = pd.read_sql_query(
+        "SELECT id , name FROM public.vitek_id_card", conn)
     return {
         "status": "success",
         "data": {
@@ -67,7 +69,8 @@ async def vitek_id():
 
 @app.get("/api/bacteria_genus/")
 async def bacteria_genus():
-    bacteria_genus = pd.read_sql_query("SELECT id , name FROM public.bacteria_genus", conn)
+    bacteria_genus = pd.read_sql_query(
+        "SELECT id , name FROM public.bacteria_genus", conn)
     return {
         "status": "success",
         "data": {
@@ -80,9 +83,11 @@ async def bacteria_genus():
         }
     }
 
+
 @app.get("/api/submitted_sample/")
 async def submitted_sample():
-    submitted_sample = pd.read_sql_query("SELECT id , name FROM public.submitted_sample", conn)
+    submitted_sample = pd.read_sql_query(
+        "SELECT id , name FROM public.submitted_sample", conn)
     return {
         "status": "success",
         "data": {
@@ -94,6 +99,7 @@ async def submitted_sample():
             ]
         }
     }
+
 
 @app.get("/api/antimicrobial_sir/")
 async def antimicrobial_sir(v_id):
@@ -135,11 +141,12 @@ async def antimicrobial_sir(v_id):
         }
     }
 
+
 @app.post("/api/upload/")
 async def upload(vitek_id, background_tasks: BackgroundTasks, in_file: UploadFile = File(...),):
     with open(f"./upload_file/{hash(time.time())}_{in_file.filename}", mode="wb") as out_file:
         shutil.copyfileobj(in_file.file, out_file)
-    
+
     return {
         "status": "success",
         "data":
@@ -149,12 +156,13 @@ async def upload(vitek_id, background_tasks: BackgroundTasks, in_file: UploadFil
         }
     }
 
+
 @app.post("/api/predict/")
 async def predict(petDetail: PetDetail):
     start_time = time.time()
-    
+
     species = petDetail.species.lower().strip()
-    bact_genus = petDetail.bact_species.lower().strip()
+    bact_genus = petDetail.bact_genus.lower().strip()
     submitted_sample = petDetail.submitted_sample.lower().strip()
     vitek_id = petDetail.vitek_id.upper().strip()
 
@@ -164,19 +172,25 @@ async def predict(petDetail: PetDetail):
     data['submitted_sample'] = submitted_sample
     data['vitek_id'] = vitek_id
     for key, value in petDetail.sir.items():
-        data[f'S/I/R_{key.lower().strip()}'] = value
+        value = value.upper()
+        data[f'S/I/R_{key.lower().strip()}'] = {"POS": '+',
+                                                'NEG': '-'}.get(value, value)
+
+    v_id = {"GN": 0, "GP": 1}.get(vitek_id, -1)
 
     # predict answer
-    result = prediction(pd.Series(data))
+    if v_id != -1:
+        result = predictor.predict(pd.Series(data), v_id)
 
     end_time = time.time()
 
-    return {'answer': result}
+    return {'answer': result , "time_response" : end_time - start_time}
 
 
 @app.post("/api/logs_upload/")
 async def logs_upload():
-    upload_file_log = pd.read_sql("SELECT id , name FROM public.upload_file_log", conn)
+    upload_file_log = pd.read_sql(
+        "SELECT id , name FROM public.upload_file_log", conn)
     return {
         "status": "success",
         "data":

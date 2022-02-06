@@ -17,8 +17,8 @@ def predictor():
     for anti in schema["GN"]:
         schema_gn_all.update(set(schema["GN"][anti]))
     # create a DataFrame with all schemas
-    schema_gp_df = pd.DataFrame(data=[[0]*len(schema_gp_all)], columns=schema_gp_all)
-    schema_gn_df = pd.DataFrame(data=[[0]*len(schema_gn_all)], columns=schema_gn_all)
+    schema_gp_df = pd.DataFrame(columns=schema_gp_all)
+    schema_gn_df = pd.DataFrame(columns=schema_gn_all)
 
     def prediction(data: pd.Series):
         nonlocal schema
@@ -55,5 +55,6 @@ def predictor():
 
 def get_dummies_dataframe_columns(new_df: pd.DataFrame, old_df: pd.DataFrame) -> pd.DataFrame:
     old_df = old_df.filter(new_df.columns)
-    new_df.update(old_df)
+    new_df = new_df.append(old_df)
+    new_df.fillna(0, inplace=True)
     return new_df
