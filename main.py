@@ -86,8 +86,27 @@ async def bacteria_genus():
 
 @app.get("/api/submitted_sample/")
 async def submitted_sample():
+    submitted_sample_binning_latest = pd.read_sql_query(
+        """
+        SELECT public.submitted_sample_binning_model_group.schema
+	    FROM public.submitted_sample_binning_model_group
+	    INNER JOIN public.model_group ON public.model_group.id = public.submitted_sample_binning_model_group.model_group_id
+	    WHERE (public.model_group.vitek_id , public.model_group.version) IN (
+		    SELECT vitek_id , MAX(version) 
+		    FROM public.model_group
+		    GROUP BY vitek_id);
+        """, conn)
+
+    submitted_all = set()
+    for sub_sam in submitted_sample_binning_latest.values:
+        submitted_all.update(set(eval(sub_sam[0])))
+
+    query = sqlalchemy.text(
+        "SELECT id , name FROM public.submitted_sample WHERE name IN :sub_all")
+
     submitted_sample = pd.read_sql_query(
-        "SELECT id , name FROM public.submitted_sample", conn)
+        query, conn, params={'sub_all': tuple(submitted_all)})
+
     return {
         "status": "success",
         "data": {
@@ -142,25 +161,8 @@ async def antimicrobial_sir(v_id):
     }
 
 
-@app.post("/api/upload/")
-async def upload(vitek_id, background_tasks: BackgroundTasks, in_file: UploadFile = File(...),):
-    with open(f"./upload_file/{hash(time.time())}_{in_file.filename}", mode="wb") as out_file:
-        shutil.copyfileobj(in_file.file, out_file)
-
-    return {
-        "status": "success",
-        "data":
-        {
-            "filename": "",
-            "start_date": ""
-        }
-    }
-
-
 @app.post("/api/predict/")
 async def predict(petDetail: PetDetail):
-    start_time = time.time()
-
     species = petDetail.species.lower().strip()
     bact_genus = petDetail.bact_genus.lower().strip()
     submitted_sample = petDetail.submitted_sample.lower().strip()
@@ -181,10 +183,18 @@ async def predict(petDetail: PetDetail):
     # predict answer
     if v_id != -1:
         result = predictor.predict(pd.Series(data), v_id)
-
-    end_time = time.time()
-
-    return {'answer': result , "time_response" : end_time - start_time}
+        return {
+            "status": "success",
+            "data":
+            {
+                "answers": result
+            }
+        }
+    else:
+        return {
+            "status": "failed",
+            "message": "vitek_id must have GN or GP only."
+        }
 
 
 @app.post("/api/logs_upload/")
@@ -195,5 +205,20 @@ async def logs_upload():
         "status": "success",
         "data":
         {
+        }
+    }
+
+
+@app.post("/api/upload/")
+async def upload(vitek_id, background_tasks: BackgroundTasks, in_file: UploadFile = File(...),):
+    with open(f"./upload_file/{hash(time.time())}_{in_file.filename}", mode="wb") as out_file:
+        shutil.copyfileobj(in_file.file, out_file)
+
+    return {
+        "status": "success",
+        "data":
+        {
+            "filename": "",
+            "start_date": ""
         }
     }

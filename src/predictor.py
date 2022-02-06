@@ -14,18 +14,18 @@ class Predictior:
         self.startup()
 
     def startup(self):
-        query = sqlalchemy.text("""SELECT model.id , antimicrobial_answer.name , model.schema AS model_schema, model.model_path , sub_binning.schema AS submitted_sample_binning
-            FROM model 
-            INNER JOIN antimicrobial_answer ON model.antimicrobial_id = antimicrobial_answer.id 
+        query = sqlalchemy.text("""SELECT public.model.id , public.antimicrobial_answer.name , public.model.schema AS model_schema, model.model_path , sub_binning.schema AS submitted_sample_binning
+            FROM public.model 
+            INNER JOIN public.antimicrobial_answer ON public.model.antimicrobial_id = public.antimicrobial_answer.id 
             INNER JOIN (
-                SELECT model_group.id , model_group_model.model_id 
-                FROM model_group 
-                INNER JOIN model_group_model ON model_group.id = model_group_model.model_group_id 
-                WHERE model_group.version > 0 ) AS m_group ON model.id = m_group.model_id 
-            INNER JOIN submitted_sample_binning_model_group AS sub_binning ON sub_binning.model_group_id = m_group.id
+                SELECT public.model_group.id , public.model_group_model.model_id 
+                FROM public.model_group 
+                INNER JOIN public.model_group_model ON public.model_group.id = public.model_group_model.model_group_id 
+                WHERE public.model_group.version > 0 ) AS m_group ON public.model.id = m_group.model_id 
+            INNER JOIN public.submitted_sample_binning_model_group AS sub_binning ON sub_binning.model_group_id = m_group.id
             WHERE model.id IN (
-                SELECT model_id FROM model_group_model WHERE model_group_id IN (
-                    SELECT id FROM model_group WHERE version = 0 AND vitek_id = :v_id ))""")
+                SELECT model_id FROM public.model_group_model WHERE model_group_id IN (
+                    SELECT id FROM public.model_group WHERE version = 0 AND vitek_id = :v_id ))""")
 
         database = [pd.read_sql_query(query, self.conn, params={
             "v_id": self.GN + 1}), pd.read_sql_query(query, self.conn, params={"v_id": self.GP + 1})]
