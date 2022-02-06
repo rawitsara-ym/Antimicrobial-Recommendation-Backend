@@ -1,5 +1,6 @@
 from src.clean_function import *
 from src.predict_function import *
+from src.predictor import Predictior
 from typing import Dict
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks
 from pydantic import BaseModel
@@ -13,7 +14,7 @@ import shutil
 
 class PetDetail(BaseModel):
     species: str
-    bact_species: str
+    bact_genus: str
     vitek_id: str
     submitted_sample: str
     sir: Dict
@@ -27,44 +28,16 @@ DB_USERNAME = os.environ.get("DB_USERNAME")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
 
 app = FastAPI()
-prediction = predictor()
 conn = sqlalchemy.create_engine(
     f"postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}/antimicrobial_system")
 
-# @app.get("/")
-# async def root():
-#     return {"message": "Hello World"}
+prediction = predictor()
 
-
-@app.post("/api/predict/")
-async def predict(petDetail: PetDetail):
-    start_time = time.time()
-
-    species = cleanSpecies(petDetail.species)
-    bact_genus = cleanBactGenus(petDetail.bact_species)
-    submitted_sample = cleanSubmittedSample(
-        petDetail.submitted_sample, petDetail.vitek_id)
-    vitek_id = petDetail.vitek_id.upper().strip()
-
-    data = dict()
-    data['species'] = species
-    data['bact_genus'] = bact_genus
-    data['submitted_sample'] = submitted_sample
-    data['vitek_id'] = vitek_id
-    for key, value in petDetail.sir.items():
-        data[f'S/I/R_{key.lower()}'] = cleanSIR(value)
-
-    # predict answer
-    result = prediction(pd.Series(data))
-
-    end_time = time.time()
-
-    return {'answer': result, 'processing_time': (end_time - start_time)}
-
+Predictior(conn)
 
 @app.get("/api/species/")
 async def species():
-    species = pd.read_sql("SELECT id , name FROM public.species", conn)
+    species = pd.read_sql_query("SELECT id , name FROM public.species", conn)
     return {
         "status": "success",
         "data": {
@@ -78,7 +51,7 @@ async def species():
 
 @app.get("/api/vitek_id/")
 async def vitek_id():
-    vitek_id = pd.read_sql("SELECT id , name FROM public.vitek_id_card", conn)
+    vitek_id = pd.read_sql_query("SELECT id , name FROM public.vitek_id_card", conn)
     return {
         "status": "success",
         "data": {
@@ -94,7 +67,7 @@ async def vitek_id():
 
 @app.get("/api/bacteria_genus/")
 async def bacteria_genus():
-    bacteria_genus = pd.read_sql("SELECT id , name FROM public.bacteria_genus", conn)
+    bacteria_genus = pd.read_sql_query("SELECT id , name FROM public.bacteria_genus", conn)
     return {
         "status": "success",
         "data": {
@@ -109,7 +82,7 @@ async def bacteria_genus():
 
 @app.get("/api/submitted_sample/")
 async def submitted_sample():
-    submitted_sample = pd.read_sql("SELECT id , name FROM public.submitted_sample", conn)
+    submitted_sample = pd.read_sql_query("SELECT id , name FROM public.submitted_sample", conn)
     return {
         "status": "success",
         "data": {
@@ -164,7 +137,6 @@ async def antimicrobial_sir(v_id):
 
 @app.post("/api/upload/")
 async def upload(vitek_id, background_tasks: BackgroundTasks, in_file: UploadFile = File(...),):
-    print(in_file.content_type)
     with open(f"./upload_file/{hash(time.time())}_{in_file.filename}", mode="wb") as out_file:
         shutil.copyfileobj(in_file.file, out_file)
     
@@ -174,5 +146,40 @@ async def upload(vitek_id, background_tasks: BackgroundTasks, in_file: UploadFil
         {
             "filename": "",
             "start_date": ""
+        }
+    }
+
+@app.post("/api/predict/")
+async def predict(petDetail: PetDetail):
+    start_time = time.time()
+    
+    species = petDetail.species.lower().strip()
+    bact_genus = petDetail.bact_species.lower().strip()
+    submitted_sample = petDetail.submitted_sample.lower().strip()
+    vitek_id = petDetail.vitek_id.upper().strip()
+
+    data = dict()
+    data['species'] = species
+    data['bact_genus'] = bact_genus
+    data['submitted_sample'] = submitted_sample
+    data['vitek_id'] = vitek_id
+    for key, value in petDetail.sir.items():
+        data[f'S/I/R_{key.lower().strip()}'] = value
+
+    # predict answer
+    result = prediction(pd.Series(data))
+
+    end_time = time.time()
+
+    return {'answer': result}
+
+
+@app.post("/api/logs_upload/")
+async def logs_upload():
+    upload_file_log = pd.read_sql("SELECT id , name FROM public.upload_file_log", conn)
+    return {
+        "status": "success",
+        "data":
+        {
         }
     }

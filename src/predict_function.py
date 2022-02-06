@@ -5,9 +5,9 @@ import joblib
 def predictor():
     with open("./ml_model/schema/schema.txt", 'r') as schema_file:
         schema = eval(schema_file.read())
-    model_gp = {anti: joblib.load(f"./ml_model/GP/{anti}.joblib")
+    model_gp = {anti: joblib.load(f"./ml_model/GP/version_1/{anti}.joblib")
                 for anti in schema["GP"].keys()}
-    model_gn = {anti: joblib.load(f"./ml_model/GN/{anti}.joblib")
+    model_gn = {anti: joblib.load(f"./ml_model/GN/version_1/{anti}.joblib")
                 for anti in schema["GN"].keys()}
     # collect all schemas
     schema_gp_all = set()
