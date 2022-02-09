@@ -265,6 +265,8 @@ async def antimicrobial_model(vitek_id):
         }
     }
 
+# ---------- DATASET DASHBOARD ----------
+
 @app.get("/api/dashboard_case/")
 async def dashboard_case(vitek_id, version):
     query = sqlalchemy.text(
@@ -276,7 +278,7 @@ async def dashboard_case(vitek_id, version):
             GROUP BY to_char(public.report.report_issued_date, 'YYYY-MM')
             ORDER BY 1
         """)
-    cases = pd.read_sql_query(query, conn, params={"vitek_id": vitek_id, "version": version})
+    case = pd.read_sql_query(query, conn, params={"vitek_id": vitek_id, "version": version})
     
     return {
         "status": "success",
@@ -284,7 +286,7 @@ async def dashboard_case(vitek_id, version):
             "cases": [{
                 'date': row[0],
                 'count': row[1]
-            } for row in cases.values]
+            } for row in case.values]
         }
     }
 
@@ -374,7 +376,7 @@ async def dashboard_antimicrobial_answer(vitek_id, version):
             INNER JOIN public.report ON public.model_group_file.file_id = public.report.file_id
             INNER JOIN public.report_sir ON public.report.id = public.report_sir.report_id
             INNER JOIN public.antimicrobial_sir ON public.report_sir.antimicrobial_id = public.antimicrobial_sir.id
-            INNER JOIN public.sir_sub_type ON public.report_sir.sir_id = public.sir_sub_type.id
+            INNER JOIN public.sir_sub_type ON public.report_sir.sir_sub_id = public.sir_sub_type.id
             WHERE public.model_group.vitek_id = :vitek_id AND public.model_group.version = :version
             GROUP BY public.antimicrobial_sir.name
             ORDER BY public.antimicrobial_sir.name
@@ -410,7 +412,7 @@ async def dashboard_antimicrobial_answer(vitek_id, version):
             GROUP BY public.antimicrobial_answer.name
             ORDER BY COUNT(public.report.id) DESC
         """)
-    antimicrobial_answer = pd.read_sql_query(query, conn, params={"vitek_id": vitek_id, "version": version})[:15]
+    antimicrobial_answer = pd.read_sql_query(query, conn, params={"vitek_id": vitek_id, "version": version})[:11]
     
     return {
         "status": "success",
@@ -419,5 +421,77 @@ async def dashboard_antimicrobial_answer(vitek_id, version):
                 'name': row[0],
                 'count': row[1]
             } for row in antimicrobial_answer.values]
+        }
+    }
+    
+# ---------- PERFORMANCE DASHBOARD ----------
+
+@app.get("/api/dashboard_performance_by_antimicrobial/")
+async def dashboard_performance_by_antimicrobial(antimicrobial_id):
+    query = sqlalchemy.text(
+        """ SELECT mg.version, m.accuracy, m.precision, m.recall, m.f1
+            FROM public.model as m
+            INNER JOIN public.model_group_model ON m.id = public.model_group_model.model_id
+            INNER JOIN public.model_group AS mg ON public.model_group_model.model_group_id =  mg.id
+            WHERE m.antimicrobial_id = :antimicrobial_id AND mg.version > 0
+        """)
+    performance = pd.read_sql_query(query, conn, params={"antimicrobial_id": antimicrobial_id})
+    
+    return {
+        "status": "success",
+        "data": {
+            "performances": [{
+                'version': row[0],
+                'accuracy': row[1],
+                'precision': row[2],
+                'recall': row[3],
+                'f1': row[4]
+            } for row in performance.values]
+        }
+    }
+    
+@app.get("/api/dashboard_performance_by_version/")
+async def dashboard_performance_by_version(vitek_id, version):
+    query = sqlalchemy.text(
+        """ SELECT public.antimicrobial_answer.name, m_group.version, m.accuracy, m.precision, m.recall, m.f1, m.performance, m.id
+            FROM public.model_group as mg
+            INNER JOIN public.model_group_model as mgm ON mg.id = mgm.model_group_id
+            INNER JOIN public.model as m ON mgm.model_id = m.id
+            INNER JOIN public.antimicrobial_answer ON m.antimicrobial_id = public.antimicrobial_answer.id
+            INNER JOIN (
+            	SELECT *
+            	FROM public.model_group_model
+            	INNER JOIN public.model_group ON public.model_group_model.model_group_id = public.model_group.id
+             	WHERE public.model_group.version > 0
+            	) as m_group ON m.id = m_group.model_id
+            WHERE mg.vitek_id = :vitek_id AND mg.version = :version
+            ORDER BY public.antimicrobial_answer.name
+        """)
+    
+    query_test_by_case = sqlalchemy.text(
+        """ SELECT 'All Model (Test By Case)' as name, mg.version, mg.accuracy, mg.precision, mg.recall, mg.f1, '-' as performance, mg.id
+            FROM public.model_group as mg
+            WHERE mg.vitek_id = :vitek_id AND mg.version = :version
+        """
+    )
+    
+    params = {"vitek_id": vitek_id, "version": version}
+    performance = pd.read_sql_query(query, conn, params=params)
+    test_by_case = pd.read_sql_query(query_test_by_case, conn, params=params)
+    performance = performance.append(test_by_case)
+
+    return {
+        "status": "success",
+        "data": {
+            "performances": [{
+                'antimicrobial': row[0],
+                'version': row[1],
+                'accuracy': row[2],
+                'precision': row[3],
+                'recall': row[4],
+                'f1': row[5],
+                'performance': row[6],
+                'model_group_id': row[7]
+            } for row in performance.values]
         }
     }
