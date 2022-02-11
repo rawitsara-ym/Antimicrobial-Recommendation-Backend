@@ -1,0 +1,100 @@
+# clean data function (species / sir / bact_genus / submitted_sample)
+import numpy as np
+
+def cleanSpecies(species:str):
+    species = species.lower().strip()
+    if species == 'cat' or species == 'dog':
+        return species
+    return 'other'
+
+def cleanSIR(sir:str):
+    sir = sir.upper().strip()
+    if sir == 'S' or sir == 'R' or sir == 'I' or sir == '+' or sir == '-':
+        return sir
+    if sir == 'NEG':
+        return '-'
+    if sir == 'POS':
+        return '+'
+    return np.nan
+
+def cleanBactGenus(bact_species:str):
+    bact_species = bact_species.lower().strip()
+    bact_genus_list = ['staphylococcus', 'escherichia', 'pseudomonas', 'enterococcus',
+       'klebsiella', 'proteus', 'streptococcus', 'pasteurella',
+       'acinetobacter', 'enterobacter', 'kocuria', 'burkholderia',
+       'micrococcus', 'serratia', 'sphingomonas', 'aeromonas', 'bacillus',
+       'unknown', 'leuconostoc', 'morganella', 'stenotrophomonas',
+       'granulicatella', 'citrobacter', 'dermacoccus', 'providencia',
+       'achromobacter', 'pantoea', 'salmonella', 'corynebacterium',
+       'aerococcus', 'neisseria', 'gardnerella', 'myroides', 'lactococcus',
+       'gemella', 'alloiococcus', 'rhizobium', 'moraxella', 'ochrobactrum',
+       'rothia', 'candida', 'yersinia', 'chryseobacterium', 'alcaligenes',
+       'pediococcus', 'paenibacillus', 'brevibacterium', 'actinomyces',
+       'trueperella', 'sphingobacterium', 'bordetella', 'cupriavidus',
+       'elizabethkingia', 'roseomonas', 'vibrio', 'chromobacterium',
+       'mycobacterium', 'lysinibacillus', 'vagococcus', 'macrococcus',
+       'nocardia', 'hafnia', 'kytococcus', 'rhodococcus', 'methylobacterium',
+       'massilia', 'actinobacillus', 'ralstonia', 'erysipelothrix',
+       'globicatella', 'shewanella', 'facklamia', 'raoultella', 'shigella',
+       'pentoea', 'exiguobacterium']
+    
+    if 'staphylococci' in bact_species in bact_species:
+        return 'staphylococcus'
+    
+    for bact in bact_genus_list:
+        if bact in bact_species:
+            return bact
+    # if 'non or low reactive biopattern' in bact_species or 'unidentified' in bact_species:
+    #     return 'unknown'
+    return 'unknown'
+
+    
+def cleanSubmittedSample(sample:str, vitek_id:str):
+    submitted_sample_list_gp = eval(open(
+        "./ml_model/schema/submitted_sample_binning_gp.txt", 'r', encoding='utf-8').read())
+    submitted_sample_list_gn = eval(open(
+        "./ml_model/schema/submitted_sample_binning_gn.txt", 'r', encoding='utf-8').read())
+    sample = sample.lower().strip()
+    vitek_id = vitek_id.lower().strip()
+    if sample == 'unk' or sample == '':
+        return 'unknown'
+    
+    # ตัดวงเล็บ, /, at, or   
+    cut_list1 = ["(", "/", ' at ', ' @ ', ' or ']
+    for cut in cut_list1:
+        if cut in sample:
+            sample = sample[:sample.index(cut)].strip()
+    
+    # ตัด right, left   
+    cut_list2 = ['right ', 'rt.', 'r.', 'rt ', 'left ', 'lt.', 'l.', 'lt ']
+    for cut in cut_list2:
+        if (cut == 'rt ' or cut == 'lt ') and sample.startswith(cut):
+            sample = sample.replace(cut, '').strip()          
+        elif cut in sample:
+            sample = sample.replace(cut, '').strip()
+                
+    # special case
+    if sample == 'ear':
+        return 'ear'
+    if 'opened wound' in sample:
+        return 'open wound'
+    if 'bited wound' in sample:
+        return 'bited wound'
+    
+    # clean
+    if vitek_id == 'gp':
+        startswith_list = submitted_sample_list_gp
+        contains_list = ['bite wound', 'nasal cavity', 'open wound']
+    else:
+        startswith_list = submitted_sample_list_gn
+        contains_list = ['bite wound', 'nasal cavity', 'nasal mucosa', 'open wound']
+        
+    for submitted_sample in startswith_list:        
+        if sample.startswith(submitted_sample):
+            return submitted_sample
+        
+    for submitted_sample in contains_list:        
+        if submitted_sample in sample:
+            return submitted_sample
+        
+    return 'other'

@@ -1,23 +1,17 @@
-from src.clean_function import *
-from src.predict_function import *
-from src.predictor import Predictior
+from importlib.resources import path
 from typing import Dict
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks
-from pydantic import BaseModel
 import pandas as pd
 from dotenv import load_dotenv
 import sqlalchemy
 import os
 import time
+import datetime
 import shutil
-
-
-class PetDetail(BaseModel):
-    species: str
-    bact_genus: str
-    vitek_id: str
-    submitted_sample: str
-    sir: Dict
+import asyncio
+from src.model import PetDetail
+from src.predictor import Predictior
+from src.csv_validation import csv_validation
 
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -175,7 +169,7 @@ async def predict(petDetail: PetDetail):
     data['vitek_id'] = vitek_id
     for key, value in petDetail.sir.items():
         value = value.upper()
-        data[f'S/I/R_{key.lower().strip()}'] = {"POS": '+',
+        data[f'S/I/R_{key.lower().strip()}'] = {'POS': '+',
                                                 'NEG': '-'}.get(value, value)
 
     v_id = {"GN": 0, "GP": 1}.get(vitek_id, -1)
@@ -197,28 +191,39 @@ async def predict(petDetail: PetDetail):
         }
 
 
-@app.post("/api/logs_upload/")
-async def logs_upload():
-    upload_file_log = pd.read_sql(
-        "SELECT id , name FROM public.upload_file_log", conn)
-    return {
-        "status": "success",
-        "data":
-        {
-        }
-    }
-
-
 @app.post("/api/upload/")
 async def upload(vitek_id, background_tasks: BackgroundTasks, in_file: UploadFile = File(...),):
+    start_time = time.time()
+    upload_date = datetime.datetime.now()
     with open(f"./upload_file/{hash(time.time())}_{in_file.filename}", mode="wb") as out_file:
         shutil.copyfileobj(in_file.file, out_file)
-
+    with conn.connect() as con:
+        query = sqlalchemy.text(
+            "INSERT INTO public.upload_file_log(filename, start_date,status) VALUES (:filename, :date, 'pending') RETURNING id;")
+        rs = con.execute(query, filename=in_file.filename, date=upload_date)
+        for row in rs:
+            id_upload = row[0]
+    background_tasks.add_task(
+        csv_validation, id_upload, in_file.filename, vitek_id, path)
     return {
         "status": "success",
         "data":
         {
-            "filename": "",
-            "start_date": ""
+            "filename": in_file.filename,
+            "start_date": upload_date,
+            "time": time.time() - start_time
         }
     }
+
+
+@app.post("/api/logs_upload/")
+async def logs_upload():
+    pass
+    # upload_file_log = pd.read_sql(
+    #     "SELECT id , name FROM public.upload_file_log", conn)
+    # return {
+    #     "status": "success",
+    #     "data":
+    #     {
+    #     }
+    # }
