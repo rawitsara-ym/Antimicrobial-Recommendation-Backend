@@ -1,8 +1,13 @@
 # %%
+import errno
 import pandas as pd
 from dotenv import load_dotenv
 import sqlalchemy
 import os
+from table_to_csv import TableToCsv
+
+dotenv_path = os.path.join(os.path.dirname(__file__)+"/../", '.env')
+load_dotenv(dotenv_path)
 
 DB_HOST = os.environ.get("DB_HOST")
 DB_USERNAME = os.environ.get("DB_USERNAME")
@@ -10,6 +15,9 @@ DB_PASSWORD = os.environ.get("DB_PASSWORD")
 
 conn = sqlalchemy.create_engine(
     f"postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}/antimicrobial_system")
+
+table = TableToCsv(conn, 1).table
+
 
 # %%
 temp_df = pd.read_csv("../upload_file/Test_data_complete_with_vitek.csv")
@@ -63,20 +71,38 @@ def validate_columns(df: pd.DataFrame):
 
 
 def validate_duplicate_row(df: pd.DataFrame):
-    pass
+    error = []
 
+    check_duplicate = ["hn", "date_of_submission", "species",
+                       "submitted_sample", "bacteria_genus", "report_issued_date"]
+    
+    columns_cast_date = ["date_of_submission" , "report_issued_date"] 
+
+    hash_db = table[check_duplicate].apply(
+        lambda r: hash(tuple(str(c).lower() for c in r)), axis=1).values
+
+    def check_exist(s):
+        for col in columns_cast_date :
+            s[col] = pd.to_datetime(s[col])
+        return hash(tuple(str(c).lower() for c in s)) in hash_db
+
+    result = df[check_duplicate].duplicated(keep=False)
+    if result.sum() > 0:
+        error.append(
+            f'row is/are duplicate in same file at {", ".join(get_true_index_str(result))}.')
+
+    result = df[check_duplicate].apply(check_exist,axis=1)
+
+    if result.sum() > 0:
+        error.append(
+            f'row is/are duplicate in database at {", ".join(get_true_index_str(result))}.')
+
+    return error
 ##########################################
 
 
 """Validate Columns Value."""
 
-
-def check_date_misformat(date_str: str):
-    try:
-        pd.to_datetime(date_str)
-        return False
-    except:
-        return True
 
 
 def get_true_index_str(series: pd.Series):
@@ -90,6 +116,13 @@ def validate_column_value(df: pd.DataFrame):
     check_startwith_blank = ["ans_"]
 
     check_startwith_bool = ["ans_"]
+
+    def check_date_misformat(date_str: str):
+        try:
+            pd.to_datetime(date_str)
+            return False
+        except:
+            return True
 
     error = []
     for chk_blank in check_columns_blank:

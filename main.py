@@ -1,6 +1,4 @@
-from importlib.resources import path
-from typing import Dict
-from fastapi import FastAPI, File, UploadFile, BackgroundTasks
+from fastapi import Depends, FastAPI, File, UploadFile, BackgroundTasks
 import pandas as pd
 from dotenv import load_dotenv
 import sqlalchemy
@@ -11,8 +9,8 @@ import shutil
 import asyncio
 from src.model import PetDetail
 from src.predictor import Predictior
-from src.csv_validation import csv_validation
-
+from src.table_to_csv import TableToCsv
+from src.upload_validator import UploadValidator
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path)
@@ -25,14 +23,23 @@ app = FastAPI()
 conn = sqlalchemy.create_engine(
     f"postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}/antimicrobial_system")
 
-# prediction = predictor()
-
 predictor = Predictior(conn)
+
+
+table_csv = {'GN': TableToCsv(conn, 1), 'GP': TableToCsv(conn, 2)}
+
+
+async def upload_validate(vitek_id: int, file_upload: pd.DataFrame):
+    vitek = ['GN', 'GP'][vitek_id - 1]
+    upload_validator = UploadValidator(table_csv[vitek])
+    result = upload_validator.validate(file_upload)
+    print(result)
 
 
 @app.get("/api/species/")
 async def species():
-    species = pd.read_sql_query("SELECT id , name FROM public.species", conn)
+    species = pd.read_sql_query(
+        "SELECT id , name FROM public.species", conn)
     return {
         "status": "success",
         "data": {
@@ -192,19 +199,21 @@ async def predict(petDetail: PetDetail):
 
 
 @app.post("/api/upload/")
-async def upload(vitek_id, background_tasks: BackgroundTasks, in_file: UploadFile = File(...),):
+async def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile = File(...),):
     start_time = time.time()
     upload_date = datetime.datetime.now()
-    with open(f"./upload_file/{hash(time.time())}_{in_file.filename}", mode="wb") as out_file:
+    filepath = f"./upload_file/{hash(start_time)}_{in_file.filename}"
+    with open(filepath, mode="wb") as out_file:
         shutil.copyfileobj(in_file.file, out_file)
     with conn.connect() as con:
         query = sqlalchemy.text(
             "INSERT INTO public.upload_file_log(filename, start_date,status) VALUES (:filename, :date, 'pending') RETURNING id;")
-        rs = con.execute(query, filename=in_file.filename, date=upload_date)
+        rs = con.execute(query, filename=in_file.filename,
+                         date=upload_date)
         for row in rs:
             id_upload = row[0]
     background_tasks.add_task(
-        csv_validation, id_upload, in_file.filename, vitek_id, path)
+        upload_validate, vitek_id, pd.read_csv(filepath))
     return {
         "status": "success",
         "data":
