@@ -2,7 +2,7 @@ import pandas as pd
 
 
 class UploadValidator:
-    ROW_MINIMUN = 100
+    ROW_MINIMUN = 300
 
     def get_true_index_str(self, series: pd.Series):
         return series[series].index.map(str)
@@ -14,7 +14,7 @@ class UploadValidator:
         """Validate Amount minimun."""
 
         if len(df) < self.ROW_MINIMUN:
-            return [f"File must have minimun {self.ROW_MINIMUN} row."]
+            return [f"ไฟล์ต้องประกอบไปด้วยแถวอย่างน้อย {self.ROW_MINIMUN} แถว"]
         else:
             return []
 
@@ -30,18 +30,66 @@ class UploadValidator:
         cols = set(df.columns)
         cols_remainer = cols - set(columns_require)
         if len(cols_remainer) != len(cols) - len(columns_require):
-            error.append("File columns must have " +
-                         ", ".join([f'"{col}"' for col in columns_require]) + ".")
+            error.append("ไฟล์ต้องประกอบด้วยคอลัมน์ " +
+                         ", ".join(columns_require))
+        startwith_error = []
         for startwith in columns_require_startwith:
             cols_startwith = [
                 col for col in cols_remainer if col.startswith(startwith)]
             if len(cols_startwith) == 0:
-                error.append(
-                    f'File columns must has columns name startwith "{startwith}" .')
+                startwith_error.append(startwith)
             cols_remainer = cols_remainer - set(cols_startwith)
+        if len(startwith_error) > 0:
+            error.append(
+                "ไฟล์ต้องมีคอลัมน์ที่ขึ้นต้นด้วย " + ', '.join(startwith_error))
         if len(cols_remainer) > 0:
             error.append(
-                "Columns " + ", ".join([f'"{col}"' for col in cols_remainer]) + " not used.")
+                "ไฟล์มีคอลัมน์ที่ไม่ต้องการ ได้แก่ " + ", ".join(cols_remainer))
+        return error
+
+    def validate_column_value(self, df: pd.DataFrame):
+        check_columns_blank = ["hn", "date_of_submission",
+                               "species", "bacteria_genus", "report_issued_date"]
+
+        check_startwith_blank = ["ans_"]
+
+        check_startwith_bool = ["ans_"]
+
+        def check_date_misformat(date_str: str):
+            try:
+                pd.to_datetime(date_str)
+                return False
+            except:
+                return True
+
+        error = []
+        for chk_blank in check_columns_blank:
+            result = (df[chk_blank] == "") | (df[chk_blank].isnull())
+            if result.sum() > 0:
+                error.append(
+                    f'คอลัมน์ {chk_blank} มีค่าว่างที่แถว {", ".join(self.get_true_index_str(result))}')
+        for chk_sw_blank in check_startwith_blank:
+            for chk_blank in df.columns[df.columns.str.startswith(chk_sw_blank)]:
+                result = (df[chk_blank] == "") | (df[chk_blank].isnull())
+                if result.sum() > 0:
+                    error.append(
+                        f'คอลัมน์ {chk_blank} มีค่าว่างที่แถว {", ".join(self.get_true_index_str(result))}')
+
+        dateformat_check_columns = ["date_of_submission", "report_issued_date"]
+        for chk_date in dateformat_check_columns:
+            result = df[chk_date].apply(check_date_misformat)
+            if result.sum() > 0:
+                error.append(
+                    f'คอลัมน์ {chk_date} มีค่าที่ไม่ใช่รูปแบบวันที่ที่แถว {", ".join(self.get_true_index_str(result))}')
+
+        for chk_sw_bool in check_startwith_bool:
+            for chk_bool in df.columns[df.columns.str.startswith(chk_sw_bool)]:
+                result = df[chk_bool].apply(lambda x: str(
+                    x).lower() not in ["true", "false"])
+                if result.sum() > 0:
+                    error.append(
+                        f'คอลัมน์ {chk_bool} มีค่าที่ไม่ใช่ True หรือ False ที่แถว {", ".join(self.get_true_index_str(result))}.')
+
         return error
 
     def validate_duplicate_row(self, df: pd.DataFrame):
@@ -65,71 +113,63 @@ class UploadValidator:
         result = df[check_duplicate].duplicated(keep=False)
         if result.sum() > 0:
             error.append(
-                f'row is/are duplicate in same file at {", ".join(self.get_true_index_str(result))}.')
+                f'ไฟล์มีแถวที่ซ้ำกัน ดังนี้ {", ".join(self.get_true_index_str(result))}')
 
         result = df[check_duplicate].apply(check_exist, axis=1)
 
         if result.sum() > 0:
             error.append(
-                f'row is/are duplicate in database at {", ".join(self.get_true_index_str(result))}.')
+                f'ไฟล์มีแถวที่ซ้ำกับฐานข้อมูล ดังนี้  {", ".join(self.get_true_index_str(result))}')
 
         return error
 
-    def validate_column_value(self, df: pd.DataFrame):
-        check_columns_blank = ["hn", "date_of_submission",
-                               "species", "bacteria_genus", "report_issued_date"]
+    def check_newvalue(self, df: pd.DataFrame):
+        """Check New Value."""
+        warning = []
+        check_newvalue_cell = ["bacteria_genus", "submitted_sample"]
 
-        check_startwith_blank = ["ans_"]
+        for chk in check_newvalue_cell:
 
-        check_startwith_bool = ["ans_"]
+            old_value = set(row[0] for row in self.db.table[chk].values)
 
-        def check_date_misformat(date_str: str):
-            try:
-                pd.to_datetime(date_str)
-                return False
-            except:
-                return True
+            input_value = set(row[0] for row in df[chk].values)
 
-        error = []
-        for chk_blank in check_columns_blank:
-            result = (df[chk_blank] == "") | (df[chk_blank].isnull())
-            if result.sum() > 0:
-                error.append(
-                    f'columns "{chk_blank}" have empty at {", ".join(self.get_true_index_str(result))}.')
-        for chk_sw_blank in check_startwith_blank:
-            for chk_blank in df.columns[df.columns.str.startswith(chk_sw_blank)]:
-                result = (df[chk_blank] == "") | (df[chk_blank].isnull())
-                if result.sum() > 0:
-                    error.append(
-                        f'columns "{chk_blank}" have empty at {", ".join(self.get_true_index_str(result))}.')
+            new_value = input_value - old_value
 
-        dateformat_check_columns = ["date_of_submission", "report_issued_date"]
-        for chk_date in dateformat_check_columns:
-            result = df[chk_date].apply(check_date_misformat)
-            if result.sum() > 0:
-                error.append(
-                    f'columns "{chk_date}" have not valid date at {", ".join(self.get_true_index_str(result))}.')
+            if len(new_value) > 0:
+                warning.append('มีการเพิ่ม "' + chk +
+                               '" ได้แก่ ' + ", ".join(new_value))
 
-        for chk_sw_bool in check_startwith_bool:
-            for chk_bool in df.columns[df.columns.str.startswith(chk_sw_bool)]:
-                result = df[chk_bool].apply(lambda x: str(
-                    x).lower() not in ["true", "false"])
-                if result.sum() > 0:
-                    error.append(
-                        f'columns "{chk_bool}" have non-boolean at {", ".join(self.get_true_index_str(result))}.')
+        in_cols_sir = set(c for c in df.columns if c.startswith("S/I/R_"))
+        old_cols_sir = set(
+            c for c in self.db.table.columns if c.startswith("S/I/R_"))
+        new_cols_sir = in_cols_sir - old_cols_sir
+        if len(new_cols_sir) > 0:
+            warning.append(
+                'มีการเพิ่ม Antimicrobial S/I/R ได้แก่ ' + ", ".join(new_cols_sir))
 
-        return error
+        in_cols_ans = set(c for c in df.columns if c.startswith("ans_"))
+        old_cols_ans = set(
+            c for c in self.db.table.columns if c.startswith("ans_"))
+        new_cols_ans = in_cols_ans - old_cols_ans
+        if len(new_cols_ans) > 0:
+            warning.append(
+                'มีการเพิ่ม Antimicrobial Answer ได้แก่ ' + ", ".join(new_cols_ans))
+
+        return warning
 
     def validate(self, table: pd.DataFrame):
         validate_array = [
             ("amount", self.validate_amount),
             ("column", self.validate_columns),
-            ("duplicate", self.validate_duplicate_row),
             ("value", self.validate_column_value),
+            ("duplicate", self.validate_duplicate_row),
         ]
         for validate in validate_array:
             errors = validate[1](table)
             if len(errors) > 0:
                 return (False, validate[0], errors)
-
-        return (True,)
+        warning = self.check_newvalue(table)
+        if len(warning) > 0:
+            return (True, "warning", warning)
+        return (True, "success")

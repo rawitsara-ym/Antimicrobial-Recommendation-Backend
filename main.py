@@ -11,6 +11,7 @@ from src.model import PetDetail
 from src.predictor import Predictior
 from src.table_to_csv import TableToCsv
 from src.upload_validator import UploadValidator
+from src.upload_tranformation import UploadTranformation
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path)
@@ -27,13 +28,6 @@ predictor = Predictior(conn)
 
 
 table_csv = {'GN': TableToCsv(conn, 1), 'GP': TableToCsv(conn, 2)}
-
-
-async def upload_validate(vitek_id: int, file_upload: pd.DataFrame):
-    vitek = ['GN', 'GP'][vitek_id - 1]
-    upload_validator = UploadValidator(table_csv[vitek])
-    result = upload_validator.validate(file_upload)
-    print(result)
 
 
 @app.get("/api/species/")
@@ -198,6 +192,67 @@ async def predict(petDetail: PetDetail):
         }
 
 
+async def uploading(vitek_id: int, uploadfile: dict):
+    # uploadfile = {"id": id_upload, "filename": in_file.filename,
+    #               "filepath": filepath, "start_date": upload_date}
+    def upload_result_func(detail: list, type: str, log_id: int):
+        res = pd.DataFrame(detail, columns=["detail"])
+        res["type"] = type
+        res["upload_file_log_id"] = log_id
+        res.to_sql('upload_file_result', schema='public',
+                   con=conn, if_exists='append', index=False)
+
+    file_upload = pd.read_csv(uploadfile["filepath"])
+    # reset index
+    file_upload.index = file_upload.index + 2  # start at 1 + header
+
+    vitek = ['GN', 'GP'][vitek_id - 1]
+    upload_validator = UploadValidator(table_csv[vitek])
+    result = upload_validator.validate(file_upload)
+    if result[0]:
+        # File Result
+        if result[1] == "warning":
+            upload_result_func(result[2], result[1], uploadfile["id"])
+
+        # File
+        with conn.connect() as con:
+            query = sqlalchemy.text(
+                "INSERT INTO public.file(name, upload_at,active,vitek_id) VALUES (:name, :date, true , :v_id) RETURNING id;")
+            rs = con.execute(query, name=uploadfile["filename"],
+                             date=uploadfile["start_date"], v_id=vitek_id)
+            for row in rs:
+                file_id = row[0]
+
+        # Report
+        uploader = UploadTranformation(vitek_id, conn)
+        row_count = uploader.upload(file_upload, file_id)
+
+        # Reload Table
+        table_csv[vitek].startup()
+
+        status = "success"
+    else:
+        upload_result_func(result[2], result[1], uploadfile["id"])
+        row_count = 0
+        status = "fail"
+    
+    # Update Filelog
+    finish_date = datetime.datetime.now()
+    delta_time = (finish_date - uploadfile["start_date"]).seconds
+    with conn.connect() as con:
+        query = sqlalchemy.text(
+            """
+            UPDATE public.upload_file_log
+            SET finish_date=:f_date, "time"=:time, amount_row=:count, status=:status
+            WHERE id = :id""")
+        rs = con.execute(query, id=uploadfile["id"], f_date=finish_date,
+                         time=delta_time, count=row_count, status=status)
+
+    # Delete Temp File
+    os.remove(uploadfile["filepath"])
+    # print("finish")
+
+
 @app.post("/api/upload/")
 async def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile = File(...),):
     start_time = time.time()
@@ -212,15 +267,16 @@ async def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: Uplo
                          date=upload_date)
         for row in rs:
             id_upload = row[0]
+    uploadfile = {"id": id_upload, "filename": in_file.filename,
+                  "filepath": filepath, "start_date": upload_date}
     background_tasks.add_task(
-        upload_validate, vitek_id, pd.read_csv(filepath))
+        uploading, vitek_id, uploadfile)
     return {
         "status": "success",
         "data":
         {
             "filename": in_file.filename,
             "start_date": upload_date,
-            "time": time.time() - start_time
         }
     }
 

@@ -54,8 +54,8 @@ class TableToCsv:
         table["value"] = True
         table = table.pivot(index="report_id",
                             columns="name").droplevel(0, axis=1)
-        # table = table.rename(
-        #     {ans: "ans_" + ans for ans in table.columns}, axis=1)
+        table = table.rename(
+            {ans: "ans_" + ans for ans in table.columns}, axis=1)
         return table
 
     def query_sir_table(self):
