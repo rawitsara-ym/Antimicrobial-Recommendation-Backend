@@ -306,6 +306,16 @@ async def upload_logs(page: int = 1):
         for row in rs:
             count = row[0]
 
+    if count == 0:
+        return {
+            "status": "success",
+            "data":
+            {
+                "logs": [],
+                "total": count
+            }
+        }
+
     query = sqlalchemy.text("""
         SELECT *
         FROM public.upload_file_log
@@ -341,8 +351,8 @@ async def upload_logs(page: int = 1):
             "filename": upload_file_logs.loc[_id, "filename"],
             "start_date": upload_file_logs.loc[_id, "start_date"],
             "finish_date": upload_file_logs.loc[_id, "finish_date"],
-            "time": int(upload_file_logs.loc[_id, "time"]) if pd.pd.notna(upload_file_logs) else '-',
-            "amount_row": int(upload_file_logs.loc[_id, "amount_row"]) if int(upload_file_logs.loc[_id, "amount_row"]) else '-',
+            "time": int(upload_file_logs.loc[_id, "time"]) if pd.notna(upload_file_logs.loc[_id, "amount_row"]) else '-',
+            "amount_row": int(upload_file_logs.loc[_id, "amount_row"]) if pd.notna(upload_file_logs.loc[_id, "amount_row"]) else '-',
             "status": upload_file_logs.loc[_id, "status"],
             "result": result
         })
