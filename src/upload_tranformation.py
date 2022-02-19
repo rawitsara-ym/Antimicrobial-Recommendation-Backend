@@ -1,3 +1,5 @@
+# %%
+
 import numpy as np
 import pandas as pd
 from sqlalchemy.engine import Engine
@@ -107,6 +109,7 @@ class UploadTranformation:
         def clean_tranform_sir_name(anti: str):
 
             nonlocal sir_name
+            nonlocal sir_type
 
             if anti not in sir_name.keys():
 
@@ -289,3 +292,5 @@ class UploadTranformation:
         report_train.to_sql('report_train', schema='public',
                             con=self.conn, if_exists='append', index=False)
         return len(report)
+
+# %%
