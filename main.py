@@ -87,7 +87,7 @@ async def submitted_sample():
 	    FROM public.submitted_sample_binning_model_group
 	    INNER JOIN public.model_group ON public.model_group.id = public.submitted_sample_binning_model_group.model_group_id
 	    WHERE (public.model_group.vitek_id , public.model_group.version) IN (
-		    SELECT vitek_id , MAX(version) 
+		    SELECT vitek_id , MAX(version)
 		    FROM public.model_group
 		    GROUP BY vitek_id);
         """, conn)
@@ -235,7 +235,7 @@ async def uploading(vitek_id: int, uploadfile: dict):
         upload_result_func(result[2], result[1], uploadfile["id"])
         row_count = 0
         status = "fail"
-    
+
     # Update Filelog
     finish_date = datetime.datetime.now()
     delta_time = (finish_date - uploadfile["start_date"]).seconds
@@ -281,14 +281,69 @@ async def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: Uplo
     }
 
 
-@app.post("/api/logs_upload/")
-async def logs_upload():
-    pass
-    # upload_file_log = pd.read_sql(
-    #     "SELECT id , name FROM public.upload_file_log", conn)
-    # return {
-    #     "status": "success",
-    #     "data":
-    #     {
-    #     }
-    # }
+@app.get("/api/upload_logs/")
+async def upload_logs(page: int = 1):
+    # show list
+    AMOUNT_PER_PAGE = 10
+    offset = (page - 1) * AMOUNT_PER_PAGE
+
+    if offset < 0:
+        return {
+            "status": "failed",
+        }
+
+    # select count
+    with conn.connect() as con:
+        rs = con.execute("SELECT COUNT(*) FROM public.upload_file_log ")
+        for row in rs:
+            count = row[0]
+
+    query = sqlalchemy.text("""
+        SELECT *
+        FROM public.upload_file_log
+        ORDER BY start_date DESC
+        LIMIT :app
+        OFFSET :offset
+        """)
+    upload_file_logs = pd.read_sql(
+        query, conn, params={"app": AMOUNT_PER_PAGE, "offset": offset})
+
+    query = sqlalchemy.text("""
+        SELECT *
+        FROM public.upload_file_result
+        WHERE upload_file_log_id IN :log_id
+        """)
+
+    upload_file_results = pd.read_sql(
+        query, conn, params={"log_id": tuple(upload_file_logs["id"].tolist())})
+
+    logs = []
+    upload_file_logs = upload_file_logs.set_index("id")
+    for _id in upload_file_logs.index:
+        result_fetch = upload_file_results[upload_file_results["upload_file_log_id"] == _id]
+        result = dict()
+        if len(result_fetch) == 0:
+            result["type"] = "success"
+            result["detail"] = []
+        else:
+            result["type"] = result_fetch["type"].iloc[0]
+            result["detail"] = result_fetch["detail"].tolist()
+        logs.append({
+            "id": int(_id),
+            "filename": upload_file_logs.loc[_id, "filename"],
+            "start_date": upload_file_logs.loc[_id, "start_date"],
+            "finish_date": upload_file_logs.loc[_id, "finish_date"],
+            "time": int(upload_file_logs.loc[_id, "time"]),
+            "amount_row": int(upload_file_logs.loc[_id, "amount_row"]),
+            "status": upload_file_logs.loc[_id, "status"],
+            "result": result
+        })
+
+    return {
+        "status": "success",
+        "data":
+        {
+            "logs": logs,
+            "total" : count
+        }
+    }
