@@ -31,7 +31,7 @@ table_csv = {'GN': TableToCsv(conn, 1), 'GP': TableToCsv(conn, 2)}
 
 
 @app.get("/api/species/")
-async def species():
+def species():
     species = pd.read_sql_query(
         "SELECT id , name FROM public.species", conn)
     return {
@@ -46,7 +46,7 @@ async def species():
 
 
 @app.get("/api/vitek_id/")
-async def vitek_id():
+def vitek_id():
     vitek_id = pd.read_sql_query(
         "SELECT id , name FROM public.vitek_id_card", conn)
     return {
@@ -63,7 +63,7 @@ async def vitek_id():
 
 
 @app.get("/api/bacteria_genus/")
-async def bacteria_genus():
+def bacteria_genus():
     bacteria_genus = pd.read_sql_query(
         "SELECT id , name FROM public.bacteria_genus", conn)
     return {
@@ -80,7 +80,7 @@ async def bacteria_genus():
 
 
 @app.get("/api/submitted_sample/")
-async def submitted_sample():
+def submitted_sample():
     submitted_sample_binning_latest = pd.read_sql_query(
         """
         SELECT public.submitted_sample_binning_model_group.schema
@@ -116,7 +116,7 @@ async def submitted_sample():
 
 
 @app.get("/api/antimicrobial_sir/")
-async def antimicrobial_sir(v_id):
+def antimicrobial_sir(v_id):
     query = sqlalchemy.text(
         "SELECT id , name , sir_type_id FROM public.antimicrobial_sir WHERE vitek_id = :v_id")
     antimicrobial_sir = pd.read_sql_query(query, conn, params={"v_id": v_id})
@@ -157,7 +157,7 @@ async def antimicrobial_sir(v_id):
 
 
 @app.post("/api/predict/")
-async def predict(petDetail: PetDetail):
+def predict(petDetail: PetDetail):
     species = petDetail.species.lower().strip()
     bact_genus = petDetail.bact_genus.lower().strip()
     submitted_sample = petDetail.submitted_sample.lower().strip()
@@ -194,7 +194,7 @@ async def predict(petDetail: PetDetail):
 # ---------- UPLOAD  ----------
 
 
-async def uploading(vitek_id: int, uploadfile: dict):
+def uploading(vitek_id: int, uploadfile: dict):
     # uploadfile = {"id": id_upload, "filename": in_file.filename,
     #               "filepath": filepath, "start_date": upload_date}
     def upload_result_func(detail: list, type: str, log_id: int):
@@ -227,18 +227,23 @@ async def uploading(vitek_id: int, uploadfile: dict):
 
         # Report
         uploader = UploadTranformation(vitek_id, conn)
-        row_count = uploader.upload(file_upload, file_id)
+        try:
+            row_count = uploader.upload(file_upload, file_id)
 
-        # Add Row Count File
-        with conn.connect() as con:
-            query = sqlalchemy.text(
-                "UPDATE public.file SET amount_row = :count WHERE id = :id")
-            rs = con.execute(query, count=row_count, id=file_id)
+            # Add Row Count File
+            with conn.connect() as con:
+                query = sqlalchemy.text(
+                    "UPDATE public.file SET amount_row = :count WHERE id = :id")
+                rs = con.execute(query, count=row_count, id=file_id)
 
-        # Reload Table
-        table_csv[vitek].startup()
+            # Reload Table
+            table_csv[vitek].startup()
 
-        status = "success"
+            status = "success"
+        except Exception as ex:
+            upload_result_func([str(ex)], result[1], uploadfile["id"])
+            row_count = 0
+            status = "fail"
     else:
         upload_result_func(result[2], result[1], uploadfile["id"])
         row_count = 0
@@ -262,7 +267,7 @@ async def uploading(vitek_id: int, uploadfile: dict):
 
 
 @app.post("/api/upload/")
-async def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile = File(...),):
+def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile = File(...),):
     start_time = time.time()
     upload_date = datetime.datetime.now()
     filepath = f"./upload_file/{hash(start_time)}_{in_file.filename}"
@@ -290,7 +295,7 @@ async def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: Uplo
 
 
 @app.get("/api/upload_logs/")
-async def upload_logs(page: int = 1):
+def upload_logs(page: int = 1):
     # show list
     AMOUNT_PER_PAGE = 10
     offset = (page - 1) * AMOUNT_PER_PAGE
@@ -366,11 +371,42 @@ async def upload_logs(page: int = 1):
         }
     }
 
+# ---------- VIEW FILENAME  ----------
+
+
+@app.get("/api/view_filename")
+def view_filename(model_group_id: int):
+    query = sqlalchemy.text("""
+        SELECT f.id , f.name , f.upload_at , f.amount_row
+        FROM public.file AS f
+        INNER JOIN public.model_group_file AS mgf ON f.id = mgf.file_id  
+        WHERE active AND mgf.model_group_id = :mg_id
+        ORDER BY upload_at DESC
+        """)
+
+    files_fetch = pd.read_sql_query(query, con=conn, params={
+                                    "mg_id": model_group_id})
+
+    files = []
+    files_fetch = files_fetch.set_index("id")
+    for _id in files_fetch.index:
+        files.append({
+            "id": int(_id),
+            "name": files_fetch.loc[_id, "name"],
+            "timestamp": files_fetch.loc[_id, "upload_at"].strftime("%d-%b-%Y %H:%M:%S"),
+            "amount_row": int(files_fetch.loc[_id, "amount_row"]),
+        })
+    return {
+        "status": "success",
+        "data": {
+            "files": files,
+        }
+    }
 # ---------- VIEW FILE  ----------
 
 
 @app.get("/api/view_all_files/")
-async def view_all_files(page: int = 1):
+def view_all_files(page: int = 1):
     # show list
     AMOUNT_PER_PAGE = 10
     offset = (page - 1) * AMOUNT_PER_PAGE
@@ -397,21 +433,29 @@ async def view_all_files(page: int = 1):
     file_logs = pd.read_sql(
         query, conn, params={"app": AMOUNT_PER_PAGE, "offset": offset})
 
-    file = []
+    files = []
     file_logs = file_logs.set_index("id")
     for _id in file_logs.index:
-        file
-        file.append({
+        files.append({
             "id": int(_id),
             "name": file_logs.loc[_id, "name"],
-            "upload_at": file_logs.loc[_id, "upload_at"],
+            "upload_at": file_logs.loc[_id, "upload_at"].strftime("%d-%b-%Y %H:%M:%S"),
+            "amount_row": int(file_logs.loc[_id, "amount_row"]),
+            "can_delete": file_logs.loc[1, "upload_at"].year > 2021
         })
+    return {
+        "status": "success",
+        "data": {
+            "files": files,
+            "total_row": count
+        }
+    }
 
 # ---------- DASHBOARD ----------
 
 
 @app.get("/api/lastest_version/")
-async def lastest_version(vitek_id):
+def lastest_version(vitek_id):
     query = sqlalchemy.text(
         """ SELECT MAX(version)
             FROM public.model_group
@@ -429,7 +473,7 @@ async def lastest_version(vitek_id):
 
 
 @app.get("/api/antimicrobial_model/")
-async def antimicrobial_model(vitek_id):
+def antimicrobial_model(vitek_id):
     query = sqlalchemy.text(
         """ SELECT public.antimicrobial_answer.id, public.antimicrobial_answer.name
             FROM public.model
@@ -457,7 +501,7 @@ async def antimicrobial_model(vitek_id):
 
 
 @app.get("/api/dashboard_case/")
-async def dashboard_case(vitek_id, version):
+def dashboard_case(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT to_char(public.report.report_issued_date, 'YYYY-MM'), COUNT(public.report.id)
             FROM public.model_group
@@ -482,7 +526,7 @@ async def dashboard_case(vitek_id, version):
 
 
 @app.get("/api/dashboard_species/")
-async def dashboard_species(vitek_id, version):
+def dashboard_species(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.species.name, COUNT(public.report.id)
             FROM public.model_group
@@ -508,7 +552,7 @@ async def dashboard_species(vitek_id, version):
 
 
 @app.get("/api/dashboard_bacteria_genus/")
-async def dashboard_bacteria_genus(vitek_id, version):
+def dashboard_bacteria_genus(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.bacteria_genus.name, COUNT(public.report.id)
             FROM public.model_group
@@ -534,7 +578,7 @@ async def dashboard_bacteria_genus(vitek_id, version):
 
 
 @app.get("/api/dashboard_submitted_sample/")
-async def dashboard_submitted_sample(vitek_id, version):
+def dashboard_submitted_sample(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.submitted_sample.name, COUNT(public.report.id)
             FROM public.model_group
@@ -560,7 +604,7 @@ async def dashboard_submitted_sample(vitek_id, version):
 
 
 @app.get("/api/dashboard_antimicrobial_sir/")
-async def dashboard_antimicrobial_answer(vitek_id, version):
+def dashboard_antimicrobial_answer(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.antimicrobial_sir.name, 
 	            COUNT(CASE WHEN public.sir_sub_type.id=1 THEN 1 END) as "POS",
@@ -599,7 +643,7 @@ async def dashboard_antimicrobial_answer(vitek_id, version):
 
 
 @app.get("/api/dashboard_antimicrobial_answer/")
-async def dashboard_antimicrobial_answer(vitek_id, version):
+def dashboard_antimicrobial_answer(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.antimicrobial_answer.name, COUNT(public.report.id)
             FROM public.model_group
@@ -628,7 +672,7 @@ async def dashboard_antimicrobial_answer(vitek_id, version):
 
 
 @app.get("/api/dashboard_performance_by_antimicrobial/")
-async def dashboard_performance_by_antimicrobial(antimicrobial_id):
+def dashboard_performance_by_antimicrobial(antimicrobial_id):
     query = sqlalchemy.text(
         """ SELECT mg.version, m.accuracy, m.precision, m.recall, m.f1
             FROM public.model as m
@@ -654,7 +698,7 @@ async def dashboard_performance_by_antimicrobial(antimicrobial_id):
 
 
 @app.get("/api/dashboard_performance_by_version/")
-async def dashboard_performance_by_version(vitek_id, version):
+def dashboard_performance_by_version(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.antimicrobial_answer.name, m_group.version, m.accuracy, m.precision, m.recall, m.f1, m.performance, m.id
             FROM public.model_group as mg
