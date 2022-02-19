@@ -191,6 +191,8 @@ async def predict(petDetail: PetDetail):
             "message": "vitek_id must have GN or GP only."
         }
 
+# ---------- UPLOAD  ----------
+
 
 async def uploading(vitek_id: int, uploadfile: dict):
     # uploadfile = {"id": id_upload, "filename": in_file.filename,
@@ -226,6 +228,12 @@ async def uploading(vitek_id: int, uploadfile: dict):
         # Report
         uploader = UploadTranformation(vitek_id, conn)
         row_count = uploader.upload(file_upload, file_id)
+
+        # Add Row Count File
+        with conn.connect() as con:
+            query = sqlalchemy.text(
+                "UPDATE public.file SET amount_row = :count WHERE id = :id")
+            rs = con.execute(query, count=row_count, id=file_id)
 
         # Reload Table
         table_csv[vitek].startup()
@@ -301,7 +309,7 @@ async def upload_logs(page: int = 1):
     query = sqlalchemy.text("""
         SELECT *
         FROM public.upload_file_log
-        ORDER BY start_date DESC
+        ORDER BY finish_date DESC
         LIMIT :app
         OFFSET :offset
         """)
@@ -333,8 +341,8 @@ async def upload_logs(page: int = 1):
             "filename": upload_file_logs.loc[_id, "filename"],
             "start_date": upload_file_logs.loc[_id, "start_date"],
             "finish_date": upload_file_logs.loc[_id, "finish_date"],
-            "time": int(upload_file_logs.loc[_id, "time"]),
-            "amount_row": int(upload_file_logs.loc[_id, "amount_row"]),
+            "time": int(upload_file_logs.loc[_id, "time"]) if pd.pd.notna(upload_file_logs) else '-',
+            "amount_row": int(upload_file_logs.loc[_id, "amount_row"]) if int(upload_file_logs.loc[_id, "amount_row"]) else '-',
             "status": upload_file_logs.loc[_id, "status"],
             "result": result
         })
@@ -344,11 +352,53 @@ async def upload_logs(page: int = 1):
         "data":
         {
             "logs": logs,
-            "total" : count
+            "total": count
         }
     }
 
+# ---------- VIEW FILE  ----------
+
+
+@app.get("/api/view_all_files/")
+async def view_all_files(page: int = 1):
+    # show list
+    AMOUNT_PER_PAGE = 10
+    offset = (page - 1) * AMOUNT_PER_PAGE
+
+    if offset < 0:
+        return {
+            "status": "failed",
+        }
+
+    # select count
+    with conn.connect() as con:
+        rs = con.execute("SELECT COUNT(*) FROM public.file ")
+        for row in rs:
+            count = row[0]
+
+    query = sqlalchemy.text("""
+        SELECT *
+        FROM public.file
+        WHERE active
+        ORDER BY upload_at DESC
+        LIMIT :app
+        OFFSET :offset
+        """)
+    file_logs = pd.read_sql(
+        query, conn, params={"app": AMOUNT_PER_PAGE, "offset": offset})
+
+    file = []
+    file_logs = file_logs.set_index("id")
+    for _id in file_logs.index:
+        file
+        file.append({
+            "id": int(_id),
+            "name": file_logs.loc[_id, "name"],
+            "upload_at": file_logs.loc[_id, "upload_at"],
+        })
+
 # ---------- DASHBOARD ----------
+
 
 @app.get("/api/lastest_version/")
 async def lastest_version(vitek_id):
@@ -357,7 +407,8 @@ async def lastest_version(vitek_id):
             FROM public.model_group
             WHERE vitek_id = :vitek_id
         """)
-    lastest_version = pd.read_sql_query(query, conn, params={"vitek_id": vitek_id})
+    lastest_version = pd.read_sql_query(
+        query, conn, params={"vitek_id": vitek_id})
 
     return {
         "status": "success",
@@ -365,7 +416,8 @@ async def lastest_version(vitek_id):
             "lastest_version": int(lastest_version.values[0][0])
         }
     }
-    
+
+
 @app.get("/api/antimicrobial_model/")
 async def antimicrobial_model(vitek_id):
     query = sqlalchemy.text(
@@ -378,7 +430,8 @@ async def antimicrobial_model(vitek_id):
             GROUP BY public.antimicrobial_answer.id, public.antimicrobial_answer.name
             ORDER BY public.antimicrobial_answer.name
         """)
-    antimicrobial = pd.read_sql_query(query, conn, params={"vitek_id": vitek_id})
+    antimicrobial = pd.read_sql_query(
+        query, conn, params={"vitek_id": vitek_id})
 
     return {
         "status": "success",
@@ -392,6 +445,7 @@ async def antimicrobial_model(vitek_id):
 
 # ---------- DATASET DASHBOARD ----------
 
+
 @app.get("/api/dashboard_case/")
 async def dashboard_case(vitek_id, version):
     query = sqlalchemy.text(
@@ -403,8 +457,9 @@ async def dashboard_case(vitek_id, version):
             GROUP BY to_char(public.report.report_issued_date, 'YYYY-MM')
             ORDER BY 1
         """)
-    case = pd.read_sql_query(query, conn, params={"vitek_id": vitek_id, "version": version})
-    
+    case = pd.read_sql_query(query, conn, params={
+                             "vitek_id": vitek_id, "version": version})
+
     return {
         "status": "success",
         "data": {
@@ -414,6 +469,7 @@ async def dashboard_case(vitek_id, version):
             } for row in case.values]
         }
     }
+
 
 @app.get("/api/dashboard_species/")
 async def dashboard_species(vitek_id, version):
@@ -427,8 +483,9 @@ async def dashboard_species(vitek_id, version):
             GROUP BY public.species.name
             ORDER BY COUNT(public.report.id) DESC
         """)
-    species = pd.read_sql_query(query, conn, params={"vitek_id": vitek_id, "version": version})
-    
+    species = pd.read_sql_query(
+        query, conn, params={"vitek_id": vitek_id, "version": version})
+
     return {
         "status": "success",
         "data": {
@@ -438,7 +495,8 @@ async def dashboard_species(vitek_id, version):
             } for row in species.values]
         }
     }
-    
+
+
 @app.get("/api/dashboard_bacteria_genus/")
 async def dashboard_bacteria_genus(vitek_id, version):
     query = sqlalchemy.text(
@@ -451,8 +509,9 @@ async def dashboard_bacteria_genus(vitek_id, version):
             GROUP BY public.bacteria_genus.name
             ORDER BY COUNT(public.report.id) DESC
         """)
-    bacteria_genus = pd.read_sql_query(query, conn, params={"vitek_id": vitek_id, "version": version})[:10]
-    
+    bacteria_genus = pd.read_sql_query(
+        query, conn, params={"vitek_id": vitek_id, "version": version})[:10]
+
     return {
         "status": "success",
         "data": {
@@ -462,7 +521,8 @@ async def dashboard_bacteria_genus(vitek_id, version):
             } for row in bacteria_genus.values]
         }
     }
-    
+
+
 @app.get("/api/dashboard_submitted_sample/")
 async def dashboard_submitted_sample(vitek_id, version):
     query = sqlalchemy.text(
@@ -475,8 +535,9 @@ async def dashboard_submitted_sample(vitek_id, version):
             GROUP BY public.submitted_sample.name
             ORDER BY COUNT(public.report.id) DESC
         """)
-    submitted_sample = pd.read_sql_query(query, conn, params={"vitek_id": vitek_id, "version": version})[:10]
-    
+    submitted_sample = pd.read_sql_query(
+        query, conn, params={"vitek_id": vitek_id, "version": version})[:10]
+
     return {
         "status": "success",
         "data": {
@@ -486,7 +547,8 @@ async def dashboard_submitted_sample(vitek_id, version):
             } for row in submitted_sample.values]
         }
     }
-    
+
+
 @app.get("/api/dashboard_antimicrobial_sir/")
 async def dashboard_antimicrobial_answer(vitek_id, version):
     query = sqlalchemy.text(
@@ -506,8 +568,9 @@ async def dashboard_antimicrobial_answer(vitek_id, version):
             GROUP BY public.antimicrobial_sir.name
             ORDER BY public.antimicrobial_sir.name
         """)
-    antimicrobial_sir = pd.read_sql_query(query, conn, params={"vitek_id": vitek_id, "version": version})
-    
+    antimicrobial_sir = pd.read_sql_query(
+        query, conn, params={"vitek_id": vitek_id, "version": version})
+
     return {
         "status": "success",
         "data": {
@@ -523,7 +586,8 @@ async def dashboard_antimicrobial_answer(vitek_id, version):
             } for row in antimicrobial_sir.values]
         }
     }
-    
+
+
 @app.get("/api/dashboard_antimicrobial_answer/")
 async def dashboard_antimicrobial_answer(vitek_id, version):
     query = sqlalchemy.text(
@@ -537,8 +601,9 @@ async def dashboard_antimicrobial_answer(vitek_id, version):
             GROUP BY public.antimicrobial_answer.name
             ORDER BY COUNT(public.report.id) DESC
         """)
-    antimicrobial_answer = pd.read_sql_query(query, conn, params={"vitek_id": vitek_id, "version": version})[:11]
-    
+    antimicrobial_answer = pd.read_sql_query(
+        query, conn, params={"vitek_id": vitek_id, "version": version})[:11]
+
     return {
         "status": "success",
         "data": {
@@ -548,8 +613,9 @@ async def dashboard_antimicrobial_answer(vitek_id, version):
             } for row in antimicrobial_answer.values]
         }
     }
-    
+
 # ---------- PERFORMANCE DASHBOARD ----------
+
 
 @app.get("/api/dashboard_performance_by_antimicrobial/")
 async def dashboard_performance_by_antimicrobial(antimicrobial_id):
@@ -560,8 +626,9 @@ async def dashboard_performance_by_antimicrobial(antimicrobial_id):
             INNER JOIN public.model_group AS mg ON public.model_group_model.model_group_id =  mg.id
             WHERE m.antimicrobial_id = :antimicrobial_id AND mg.version > 0
         """)
-    performance = pd.read_sql_query(query, conn, params={"antimicrobial_id": antimicrobial_id})
-    
+    performance = pd.read_sql_query(
+        query, conn, params={"antimicrobial_id": antimicrobial_id})
+
     return {
         "status": "success",
         "data": {
@@ -574,7 +641,8 @@ async def dashboard_performance_by_antimicrobial(antimicrobial_id):
             } for row in performance.values]
         }
     }
-    
+
+
 @app.get("/api/dashboard_performance_by_version/")
 async def dashboard_performance_by_version(vitek_id, version):
     query = sqlalchemy.text(
@@ -592,14 +660,14 @@ async def dashboard_performance_by_version(vitek_id, version):
             WHERE mg.vitek_id = :vitek_id AND mg.version = :version
             ORDER BY public.antimicrobial_answer.name
         """)
-    
+
     query_test_by_case = sqlalchemy.text(
         """ SELECT 'All Model (Test By Case)' as name, mg.version, mg.accuracy, mg.precision, mg.recall, mg.f1, '-' as performance, mg.id
             FROM public.model_group as mg
             WHERE mg.vitek_id = :vitek_id AND mg.version = :version
         """
     )
-    
+
     params = {"vitek_id": vitek_id, "version": version}
     performance = pd.read_sql_query(query, conn, params=params)
     test_by_case = pd.read_sql_query(query_test_by_case, conn, params=params)
