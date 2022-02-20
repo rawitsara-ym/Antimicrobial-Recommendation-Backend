@@ -354,8 +354,8 @@ def upload_logs(page: int = 1):
         logs.append({
             "id": int(_id),
             "filename": upload_file_logs.loc[_id, "filename"],
-            "start_date": upload_file_logs.loc[_id, "start_date"],
-            "finish_date": upload_file_logs.loc[_id, "finish_date"],
+            "start_date": upload_file_logs.loc[_id, "start_date"].strftime("%d-%b-%Y %H:%M:%S"),
+            "finish_date": upload_file_logs.loc[_id, "finish_date"].strftime("%d-%b-%Y %H:%M:%S") if pd.notna(upload_file_logs.loc[_id, "finish_date"]) else '-',
             "time": int(upload_file_logs.loc[_id, "time"]) if pd.notna(upload_file_logs.loc[_id, "amount_row"]) else '-',
             "amount_row": int(upload_file_logs.loc[_id, "amount_row"]) if pd.notna(upload_file_logs.loc[_id, "amount_row"]) else '-',
             "status": upload_file_logs.loc[_id, "status"],
@@ -423,25 +423,27 @@ def view_all_files(page: int = 1):
             count = row[0]
 
     query = sqlalchemy.text("""
-        SELECT *
+        SELECT public.file.*, public.vitek_id_card.name as vitek_id_name
         FROM public.file
-        WHERE active
+        INNER JOIN public.vitek_id_card ON public.vitek_id_card.id = public.file.vitek_id
+        WHERE active AND amount_row IS NOT NULL
         ORDER BY upload_at DESC
         LIMIT :app
         OFFSET :offset
         """)
     file_logs = pd.read_sql(
         query, conn, params={"app": AMOUNT_PER_PAGE, "offset": offset})
-
+    
     files = []
     file_logs = file_logs.set_index("id")
     for _id in file_logs.index:
         files.append({
             "id": int(_id),
             "name": file_logs.loc[_id, "name"],
+            "vitek_id" : file_logs.loc[_id, "vitek_id_name"],
             "upload_at": file_logs.loc[_id, "upload_at"].strftime("%d-%b-%Y %H:%M:%S"),
             "amount_row": int(file_logs.loc[_id, "amount_row"]),
-            "can_delete": file_logs.loc[1, "upload_at"].year > 2021
+            "can_delete": file_logs.loc[_id, "upload_at"].year > 2021
         })
     return {
         "status": "success",
@@ -700,7 +702,7 @@ def dashboard_performance_by_antimicrobial(antimicrobial_id):
 @app.get("/api/dashboard_performance_by_version/")
 def dashboard_performance_by_version(vitek_id, version):
     query = sqlalchemy.text(
-        """ SELECT public.antimicrobial_answer.name, m_group.version, m.accuracy, m.precision, m.recall, m.f1, m.performance, m.id
+        """ SELECT public.antimicrobial_answer.name, m_group.version, m.accuracy, m.precision, m.recall, m.f1, m.performance, m_group.model_group_id
             FROM public.model_group as mg
             INNER JOIN public.model_group_model as mgm ON mg.id = mgm.model_group_id
             INNER JOIN public.model as m ON mgm.model_id = m.id
@@ -716,7 +718,7 @@ def dashboard_performance_by_version(vitek_id, version):
         """)
 
     query_test_by_case = sqlalchemy.text(
-        """ SELECT 'All Model (Test By Case)' as name, mg.version, mg.accuracy, mg.precision, mg.recall, mg.f1, '-' as performance, mg.id
+        """ SELECT 'All Model (Test By Case)' as name, mg.version, mg.accuracy, mg.precision, mg.recall, mg.f1, '-' as performance, mg.id as model_group_id
             FROM public.model_group as mg
             WHERE mg.vitek_id = :vitek_id AND mg.version = :version
         """
