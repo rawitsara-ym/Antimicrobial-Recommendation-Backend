@@ -7,6 +7,7 @@ import time
 import datetime
 import shutil
 import asyncio
+from src.utility import cleanSubmittedSample
 from src.model import PetDetail
 from src.predictor import Predictior
 from src.table_to_csv import TableToCsv
@@ -158,9 +159,11 @@ def antimicrobial_sir(v_id):
 
 @app.post("/api/predict/")
 def predict(petDetail: PetDetail):
+
     species = petDetail.species.lower().strip()
     bact_genus = petDetail.bact_genus.lower().strip()
-    submitted_sample = petDetail.submitted_sample.lower().strip()
+    submitted_sample = petDetail.submitted_sample.lower(
+    ).strip().apply(cleanSubmittedSample)
     vitek_id = petDetail.vitek_id.upper().strip()
 
     data = dict()
@@ -209,7 +212,7 @@ def uploading(vitek_id: int, uploadfile: dict):
     file_upload.index = file_upload.index + 2  # start at 1 + header
 
     vitek = ['GN', 'GP'][vitek_id - 1]
-    upload_validator = UploadValidator(table_csv[vitek])
+    upload_validator = UploadValidator(table_csv[vitek], vitek_id)
     result = upload_validator.validate(file_upload)
     if result[0]:
         # File Result
@@ -267,7 +270,11 @@ def uploading(vitek_id: int, uploadfile: dict):
 
 
 @app.post("/api/upload/")
-def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile = File(...),):
+def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile = File(...)):
+    if vitek_id not in pd.read_sql_query("SELECT id FROM public.vitek_id_card", conn).values:
+        return {
+            "status": "failed",
+        }
     start_time = time.time()
     upload_date = datetime.datetime.now()
     filepath = f"./upload_file/{hash(start_time)}_{in_file.filename}"
@@ -275,9 +282,9 @@ def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile
         shutil.copyfileobj(in_file.file, out_file)
     with conn.connect() as con:
         query = sqlalchemy.text(
-            "INSERT INTO public.upload_file_log(filename, start_date,status) VALUES (:filename, :date, 'pending') RETURNING id;")
+            "INSERT INTO public.upload_file_log(filename, start_date,status , vitek_id) VALUES (:filename, :date, 'pending' , :vitek_id) RETURNING id;")
         rs = con.execute(query, filename=in_file.filename,
-                         date=upload_date)
+                         date=upload_date, vitek_id=vitek_id)
         for row in rs:
             id_upload = row[0]
     uploadfile = {"id": id_upload, "filename": in_file.filename,
@@ -359,7 +366,8 @@ def upload_logs(page: int = 1):
             "time": int(upload_file_logs.loc[_id, "time"]) if pd.notna(upload_file_logs.loc[_id, "amount_row"]) else '-',
             "amount_row": int(upload_file_logs.loc[_id, "amount_row"]) if pd.notna(upload_file_logs.loc[_id, "amount_row"]) else '-',
             "status": upload_file_logs.loc[_id, "status"],
-            "result": result
+            "result": result,
+            "vitek_id": int(upload_file_logs.loc[_id, "vitek_id"])
         })
 
     return {
@@ -433,14 +441,14 @@ def view_all_files(page: int = 1):
         """)
     file_logs = pd.read_sql(
         query, conn, params={"app": AMOUNT_PER_PAGE, "offset": offset})
-    
+
     files = []
     file_logs = file_logs.set_index("id")
     for _id in file_logs.index:
         files.append({
             "id": int(_id),
             "name": file_logs.loc[_id, "name"],
-            "vitek_id" : file_logs.loc[_id, "vitek_id_name"],
+            "vitek_id": file_logs.loc[_id, "vitek_id_name"],
             "upload_at": file_logs.loc[_id, "upload_at"].strftime("%d-%b-%Y %H:%M:%S"),
             "amount_row": int(file_logs.loc[_id, "amount_row"]),
             "can_delete": file_logs.loc[_id, "upload_at"].year > 2021

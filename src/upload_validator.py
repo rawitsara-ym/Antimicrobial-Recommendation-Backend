@@ -1,3 +1,4 @@
+# %%
 import pandas as pd
 
 
@@ -7,8 +8,9 @@ class UploadValidator:
     def get_true_index_str(self, series: pd.Series):
         return series[series].index.map(str)
 
-    def __init__(self, db) -> None:
+    def __init__(self, db, vitek_id) -> None:
         self.db = db
+        self.vitek_id = vitek_id
 
     def validate_amount(self, df: pd.DataFrame):
         """Validate Amount minimun."""
@@ -22,7 +24,7 @@ class UploadValidator:
         """Validate Columns."""
 
         columns_require = ["hn", "date_of_submission", "report_issued_date",
-                           "species", "bacteria_genus", "submitted_sample"]
+                           "species", "bacteria_genus", "submitted_sample", "vitek_id"]
 
         columns_require_startwith = ["S/I/R_", "ans_"]
 
@@ -49,7 +51,7 @@ class UploadValidator:
 
     def validate_column_value(self, df: pd.DataFrame):
         check_columns_blank = ["hn", "date_of_submission",
-                               "species", "bacteria_genus", "report_issued_date"]
+                               "species", "bacteria_genus", "report_issued_date", "vitek_id"]
 
         check_startwith_blank = ["ans_"]
 
@@ -90,6 +92,13 @@ class UploadValidator:
                     error.append(
                         f'คอลัมน์ {chk_bool} มีค่าที่ไม่ใช่ True หรือ False ที่แถว {", ".join(self.get_true_index_str(result))}.')
 
+        # Check vitek_id
+
+        vitek = ["GN", "GP"]
+        result = (df["vitek_id"].apply(str.upper) != vitek[self.vitek_id - 1])
+        if result.sum() > 0:
+            error.append(
+                f'คอลัมน์ vitek_id มีค่าที่ไม่ใช่ {vitek[self.vitek_id - 1]} ที่แถว {", ".join(self.get_true_index_str(result))}.')
         return error
 
     def validate_duplicate_row(self, df: pd.DataFrame):
@@ -173,3 +182,5 @@ class UploadValidator:
         if len(warning) > 0:
             return (True, "warning", warning)
         return (True, "success")
+
+# %%
