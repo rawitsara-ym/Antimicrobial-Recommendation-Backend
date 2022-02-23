@@ -329,8 +329,9 @@ def upload_logs(page: int = 1):
         }
 
     query = sqlalchemy.text("""
-        SELECT *
-        FROM public.upload_file_log
+        SELECT up.id , up.filename , up.start_date , up.finish_date , up.time , up.amount_row ,up.status , vi.name AS vitek_id
+        FROM public.upload_file_log AS up 
+        INNER JOIN public.vitek_id_card AS vi ON up.vitek_id = vi.id
         ORDER BY finish_date DESC
         LIMIT :app
         OFFSET :offset
@@ -363,11 +364,11 @@ def upload_logs(page: int = 1):
             "filename": upload_file_logs.loc[_id, "filename"],
             "start_date": upload_file_logs.loc[_id, "start_date"].strftime("%d-%b-%Y %H:%M:%S"),
             "finish_date": upload_file_logs.loc[_id, "finish_date"].strftime("%d-%b-%Y %H:%M:%S") if pd.notna(upload_file_logs.loc[_id, "finish_date"]) else '-',
-            "time": int(upload_file_logs.loc[_id, "time"]) if pd.notna(upload_file_logs.loc[_id, "amount_row"]) else '-',
+            "time": int(upload_file_logs.loc[_id, "time"]) if pd.notna(upload_file_logs.loc[_id, "time"]) else '-',
             "amount_row": int(upload_file_logs.loc[_id, "amount_row"]) if pd.notna(upload_file_logs.loc[_id, "amount_row"]) else '-',
             "status": upload_file_logs.loc[_id, "status"],
             "result": result,
-            "vitek_id": int(upload_file_logs.loc[_id, "vitek_id"])
+            "vitek_id": upload_file_logs.loc[_id, "vitek_id"]
         })
 
     return {
