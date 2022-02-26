@@ -11,7 +11,6 @@ class TableToCsv:
         self.startup()
 
     def startup(self):
-        self.file_id = []
         master_table = self.query_report_table()
         answer_table = self.query_answer_table()
         sir_table = self.query_sir_table()

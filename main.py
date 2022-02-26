@@ -5,6 +5,7 @@ import sqlalchemy
 import os
 import time
 import datetime
+import copy
 import shutil
 import asyncio
 from src.utility import cleanSubmittedSample
@@ -465,10 +466,7 @@ def view_all_files(page: int = 1):
 
 # ---------- RETRAINING ----------
 
-@app.post("/api/retraining/")
-def model_retraining():
-    vitek_id = 1
-    
+def training(vitek_id: int, table_report: pd.DataFrame):
     # start training
     start_date = datetime.datetime.now()
     with conn.connect() as con:
@@ -487,11 +485,11 @@ def model_retraining():
             """INSERT INTO public.file_retraining_log(retraining_log_id, file_id)
             VALUES (:retraining_log_id, :file_id) 
             """)
-        for file_id in table_csv["GN"].file_id:
+        for file_id in table_report.file_id:
             rs = con.execute(query, retraining_log_id=retraining_id, file_id=file_id)
     
     # Retraining
-    model_retraining = ModelRetraining(table_csv["GN"], vitek_id, conn)   
+    model_retraining = ModelRetraining(table_report, vitek_id, conn)   
     model_group_id = model_retraining.training()
     
     # finish training
@@ -505,6 +503,15 @@ def model_retraining():
             WHERE id = :id""")
         rs = con.execute(query, finish_date=finish_date, time=delta_time, status="success",
                          mg_id=model_group_id ,id=retraining_id)
+
+
+@app.post("/api/retraining/")
+def model_retraining(background_tasks: BackgroundTasks):
+    vitek_id = 1
+    vitek = ["GN", "GP"][vitek_id - 1]
+    
+    background_tasks.add_task(training, vitek_id, copy.copy(table_csv[vitek]))
+    
     
     return {
         "status": "success",
