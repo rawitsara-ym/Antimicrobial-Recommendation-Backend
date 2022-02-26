@@ -248,11 +248,11 @@ def uploading(vitek_id: int, uploadfile: dict):
         except Exception as ex:
             upload_result_func([str(ex)], result[1], uploadfile["id"])
             row_count = 0
-            status = "fail"
+            status = "failed"
     else:
         upload_result_func(result[2], result[1], uploadfile["id"])
         row_count = 0
-        status = "fail"
+        status = "failed"
 
     # Update Filelog
     finish_date = datetime.datetime.now()
@@ -862,4 +862,31 @@ def configuration_smote(vitek_id):
         "status": "success",
         "data": {
             "smote": configs.apply(to_params, axis=1).values.tolist()}
+    }
+
+# ---------- DELETE FILE  ----------
+
+
+@app.delete("/api/delete_file")
+def delete_file(file_id: int):
+    files = pd.read_sql_query("SELECT id FROM public.file", conn)
+    if file_id not in files["id"].values:
+        return {
+            "status": "failed",
+        }
+    files_used = pd.read_sql_query(
+        "SELECT DISTINCT file_id FROM public.model_group_file", conn)
+    if file_id not in files_used['file_id'].values:
+        # DELETE FILE IN DATABASE
+        with conn.connect() as con:
+            query = sqlalchemy.text("DELETE FROM public.file WHERE id = :id;")
+            con.execute(query, id=file_id)
+    else:
+        # DELETE FILE SET STATUS
+        with conn.connect() as con:
+            query = sqlalchemy.text(
+                "UPDATE public.file SET active=False WHERE id = :id;")
+            con.execute(query, id=file_id)
+    return {
+        "status": "success",
     }
