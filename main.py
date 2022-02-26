@@ -13,6 +13,7 @@ from src.predictor import Predictior
 from src.table_to_csv import TableToCsv
 from src.upload_validator import UploadValidator
 from src.upload_tranformation import UploadTranformation
+from src.model_training import ModelRetraining
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path)
@@ -162,8 +163,8 @@ def predict(petDetail: PetDetail):
 
     species = petDetail.species.lower().strip()
     bact_genus = petDetail.bact_genus.lower().strip()
-    submitted_sample = petDetail.submitted_sample.lower(
-    ).strip().apply(cleanSubmittedSample)
+    submitted_sample = cleanSubmittedSample(petDetail.submitted_sample.lower(
+    ).strip())
     vitek_id = petDetail.vitek_id.upper().strip()
 
     data = dict()
@@ -461,6 +462,55 @@ def view_all_files(page: int = 1):
             "total_row": count
         }
     }
+
+# ---------- RETRAINING ----------
+
+@app.post("/api/retraining/")
+def model_retraining():
+    vitek_id = 1
+    
+    # start training
+    start_date = datetime.datetime.now()
+    with conn.connect() as con:
+        query = sqlalchemy.text(
+            """INSERT INTO public.retraining_log(vitek_id, start_date, status)
+            VALUES (:vitek_id, :start_date, 'training') 
+            RETURNING id;
+            """)
+        rs = con.execute(query, vitek_id=vitek_id, start_date=start_date)
+        for row in rs:
+            retraining_id = row[0]
+
+    # INSERT file_retraining_log        
+    with conn.connect() as con:
+        query = sqlalchemy.text(
+            """INSERT INTO public.file_retraining_log(retraining_log_id, file_id)
+            VALUES (:retraining_log_id, :file_id) 
+            """)
+        for file_id in table_csv["GN"].file_id:
+            rs = con.execute(query, retraining_log_id=retraining_id, file_id=file_id)
+    
+    # Retraining
+    model_retraining = ModelRetraining(table_csv["GN"], vitek_id, conn)   
+    model_group_id = model_retraining.training()
+    
+    # finish training
+    finish_date = datetime.datetime.now()
+    delta_time = (finish_date - start_date).seconds
+    with conn.connect() as con:
+        query = sqlalchemy.text(
+            """
+            UPDATE public.retraining_log
+            SET finish_date=:finish_date, time=:time, status=:status, model_group_id=:mg_id
+            WHERE id = :id""")
+        rs = con.execute(query, finish_date=finish_date, time=delta_time, status="success",
+                         mg_id=model_group_id ,id=retraining_id)
+    
+    return {
+        "status": "success",
+        "data": []
+    }
+
 
 # ---------- DASHBOARD ----------
 

@@ -11,6 +11,7 @@ class TableToCsv:
         self.startup()
 
     def startup(self):
+        self.file_id = []
         master_table = self.query_report_table()
         answer_table = self.query_answer_table()
         sir_table = self.query_sir_table()
@@ -25,7 +26,7 @@ class TableToCsv:
 
     def query_report_table(self):
         query = sqlalchemy.text("""
-        SELECT report.id , report.hn , report.date_of_submission , species.name AS species, submitted_sample.name AS submitted_sample, vitek_id_card.name AS vitek_id, bacteria_genus.name AS bacteria_genus , report.report_issued_date
+        SELECT report.id , report.hn , report.date_of_submission , species.name AS species, submitted_sample.name AS submitted_sample, vitek_id_card.name AS vitek_id, bacteria_genus.name AS bacteria_genus , report.report_issued_date, report.file_id
         FROM public.report AS report
         INNER JOIN public.species AS species ON species.id = report.species_id
         INNER JOIN public.bacteria_genus AS bacteria_genus ON bacteria_genus.id = report.bacteria_genus_id
@@ -40,6 +41,8 @@ class TableToCsv:
             table['date_of_submission']).dt.normalize()
         table['report_issued_date'] = pd.to_datetime(
             table['report_issued_date']).dt.normalize()
+        self.file_id = list(set(table['file_id']))
+        table.drop(columns=['file_id'], inplace=True)
         return table
 
     def query_answer_table(self):
