@@ -466,6 +466,7 @@ def view_all_files(page: int = 1):
 
 # ---------- RETRAINING ----------
 
+
 def training(vitek_id: int, table_report: pd.DataFrame):
     # start training
     start_date = datetime.datetime.now()
@@ -479,19 +480,20 @@ def training(vitek_id: int, table_report: pd.DataFrame):
         for row in rs:
             retraining_id = row[0]
 
-    # INSERT file_retraining_log        
+    # INSERT file_retraining_log
     with conn.connect() as con:
         query = sqlalchemy.text(
             """INSERT INTO public.file_retraining_log(retraining_log_id, file_id)
             VALUES (:retraining_log_id, :file_id) 
             """)
         for file_id in table_report.file_id:
-            rs = con.execute(query, retraining_log_id=retraining_id, file_id=file_id)
-    
+            rs = con.execute(
+                query, retraining_log_id=retraining_id, file_id=file_id)
+
     # Retraining
-    model_retraining = ModelRetraining(table_report, vitek_id, conn)   
+    model_retraining = ModelRetraining(table_report, vitek_id, conn)
     model_group_id = model_retraining.training()
-    
+
     # finish training
     finish_date = datetime.datetime.now()
     delta_time = (finish_date - start_date).seconds
@@ -502,17 +504,16 @@ def training(vitek_id: int, table_report: pd.DataFrame):
             SET finish_date=:finish_date, time=:time, status=:status, model_group_id=:mg_id
             WHERE id = :id""")
         rs = con.execute(query, finish_date=finish_date, time=delta_time, status="success",
-                         mg_id=model_group_id ,id=retraining_id)
+                         mg_id=model_group_id, id=retraining_id)
 
 
 @app.post("/api/retraining/")
 def model_retraining(background_tasks: BackgroundTasks):
     vitek_id = 1
     vitek = ["GN", "GP"][vitek_id - 1]
-    
+
     background_tasks.add_task(training, vitek_id, copy.copy(table_csv[vitek]))
-    
-    
+
     return {
         "status": "success",
         "data": []
@@ -809,4 +810,56 @@ def dashboard_performance_by_version(vitek_id, version):
                 'model_group_id': row[7]
             } for row in performance.values]
         }
+    }
+
+# ---------- CONFIGURATION ----------
+
+
+@app.get("/api/configuration_xgb_parameter")
+def configuration_xgb_parameter(vitek_id):
+    query = sqlalchemy.text("""
+    SELECT anti.name , n_estimators, gamma, max_depth, subsample, colsample_bytree, learning_rate, algorithm,  random_state 
+    FROM public.model_configuration AS mc 
+    INNER JOIN public.antimicrobial_answer AS anti ON anti.id = mc.antimicrobial_id
+    WHERE vitek_id = :v_id;""")
+    configs = pd.read_sql_query(query, conn, params={"v_id": vitek_id})
+    xgb_params = {}
+
+    def to_params(params: pd.Series):
+        indexes = params.index.tolist()
+        indexes.pop(0)
+        param_str = ", ".join(
+            [f"{item[0]} = {item[1]}" for item in params[indexes].items()])
+        return {
+            "name": params["name"],
+            "params": param_str
+        }
+
+    return {
+        "status": "success",
+        "data": {
+            "xgb_params": configs.apply(to_params, axis=1).values.tolist()}
+    }
+
+
+@app.get("/api/configuration_smote")
+def configuration_smote(vitek_id):
+    query = sqlalchemy.text("""
+    SELECT anti.name , smote , smote_random_state 
+    FROM public.model_configuration AS mc 
+    INNER JOIN public.antimicrobial_answer AS anti ON anti.id = mc.antimicrobial_id
+    WHERE vitek_id = :v_id;""")
+    configs = pd.read_sql_query(query, conn, params={"v_id": vitek_id})
+    xgb_params = {}
+
+    def to_params(params: pd.Series):
+        return {
+            "name": params["name"],
+            "algo": params["smote"]
+        }
+
+    return {
+        "status": "success",
+        "data": {
+            "smote": configs.apply(to_params, axis=1).values.tolist()}
     }
