@@ -463,6 +463,36 @@ def view_all_files(page: int = 1):
             "total_row": count
         }
     }
+ 
+ # ---------- VIEW FILE RETRAINING LOG  ----------
+    
+@app.get("/api/view_file_retraining_log")
+def view_file_retraining_log(retraining_log_id: int):
+    query = sqlalchemy.text("""
+        SELECT file_id, name, upload_at, amount_row
+        FROM public.file_retraining_log AS file_re_log
+        INNER JOIN public.file AS file ON file.id = file_re_log.file_id
+        WHERE retraining_log_id = :re_log_id
+        ORDER BY upload_at DESC
+        """)
+
+    files_fetch = pd.read_sql_query(query, con=conn, params={"re_log_id": retraining_log_id})
+
+    files = []
+    files_fetch = files_fetch.set_index("file_id")
+    for _id in files_fetch.index:
+        files.append({
+            "id": int(_id),
+            "name": files_fetch.loc[_id, "name"],
+            "timestamp": files_fetch.loc[_id, "upload_at"].strftime("%d-%b-%Y %H:%M:%S"),
+            "amount_row": int(files_fetch.loc[_id, "amount_row"]),
+        })
+    return {
+        "status": "success",
+        "data": {
+            "files": files,
+        }
+    }
 
 # ---------- RETRAINING ----------
 
@@ -507,20 +537,128 @@ def training(vitek_id: int, table_report: pd.DataFrame):
 
 @app.post("/api/retraining/")
 def model_retraining(background_tasks: BackgroundTasks):
-    vitek_id = 1
-    vitek = ["GN", "GP"][vitek_id - 1]
     
-    background_tasks.add_task(training, vitek_id, copy.copy(table_csv[vitek]))
+    # Check training status
+    count_training_status = pd.read_sql_query(
+        """ SELECT COUNT(*)
+            FROM public.retraining_log
+            WHERE status = 'training'
+        """, conn).values[0][0]
+
+    if count_training_status != 0:
+        return {
+            "status": "success",
+            "data": {
+                "status": "fail",
+                "message": "ขณะนี้ระบบกำลังเทรนโมเดลอยู่"
+            }
+        }
     
+    # Check last model_group's file
+    file_query = sqlalchemy.text(
+        """ SELECT file_id
+            FROM public.model_group as mg
+            INNER JOIN public.model_group_file as mgf ON mgf.model_group_id = mg.id
+            WHERE mg.vitek_id = :v_id AND version = (SELECT MAX(version) 
+				                                FROM public.model_group
+				                                WHERE vitek_id = :v_id)
+        """)
+    count_training = 0
+    table_copy = copy.copy(table_csv)
+    for vitek_id in [1, 2]:
+        vitek = ["GN", "GP"][vitek_id - 1]
+        file_id_list = list(pd.read_sql_query(file_query, conn, params={"v_id": vitek_id})["file_id"].values)
+
+        file_id_list.sort()
+        table_copy[vitek].file_id.sort()
+        
+        if file_id_list == table_copy[vitek].file_id:
+            count_training += 1
+        else:
+            background_tasks.add_task(training, vitek_id, table_copy[vitek])
     
+    if count_training >= 2:
+        return {
+                "status": "success",
+                "data": {
+                    "status": "fail",
+                    "message": "ขณะนี้ยังไม่มีข้อมูลใหม่สำหรับเทรนโมเดล"
+                }
+            } 
+ 
     return {
         "status": "success",
-        "data": []
+        "data": {
+            "status": "success",
+            "message": "ขณะนี้ระบบได้เริ่มเทรนโมเดลแล้ว"
+        }
+        
     }
 
+@app.get("/api/retraining_logs/")
+def retraining_logs(page: int = 1):
+    # show list
+    AMOUNT_PER_PAGE = 10
+    offset = (page - 1) * AMOUNT_PER_PAGE
+
+    if offset < 0:
+        return {
+            "status": "failed",
+        }
+
+    # select count
+    with conn.connect() as con:
+        rs = con.execute("SELECT COUNT(*) FROM public.retraining_log")
+        for row in rs:
+            count = row[0]
+
+    if count == 0:
+        return {
+            "status": "success",
+            "data":
+            {
+                "logs": [],
+                "total": count
+            }
+        }
+
+    query = sqlalchemy.text("""
+        SELECT log.id, log.start_date, log.finish_date, log.time, log.status, mg.version, vi.id AS vitek_id, vi.name AS vitek_name
+        FROM public.retraining_log AS log 
+        INNER JOIN public.vitek_id_card AS vi ON log.vitek_id = vi.id
+        LEFT JOIN public.model_group AS mg ON mg.id = log.model_group_id
+        ORDER BY finish_date DESC
+        LIMIT :app
+        OFFSET :offset
+        """)
+    retraining_logs = pd.read_sql(
+        query, conn, params={"app": AMOUNT_PER_PAGE, "offset": offset})
+
+    logs = []
+    retraining_logs = retraining_logs.set_index("id")
+    for _id in retraining_logs.index:
+        logs.append({
+            "id": int(_id),
+            "vitek_id": int(retraining_logs.loc[_id, "vitek_id"]),
+            "vitek_name": retraining_logs.loc[_id, "vitek_name"],
+            "start_date": retraining_logs.loc[_id, "start_date"].strftime("%d-%b-%Y %H:%M:%S"),
+            "finish_date": retraining_logs.loc[_id, "finish_date"].strftime("%d-%b-%Y %H:%M:%S") if pd.notna(retraining_logs.loc[_id, "finish_date"]) else '-',
+            "time": int(retraining_logs.loc[_id, "time"]) if pd.notna(retraining_logs.loc[_id, "time"]) else '-',
+            "status": retraining_logs.loc[_id, "status"],
+            "version": int(retraining_logs.loc[_id, "version"]) if pd.notna(retraining_logs.loc[_id, "version"]) else None,
+        })
+
+    return {
+        "status": "success",
+        "data":
+        {
+            "logs": logs,
+            "total": count
+        }
+    }
+    
 
 # ---------- DASHBOARD ----------
-
 
 @app.get("/api/lastest_version/")
 def lastest_version(vitek_id):
