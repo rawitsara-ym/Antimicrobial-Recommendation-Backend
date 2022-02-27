@@ -192,7 +192,7 @@ def predict(petDetail: PetDetail):
         }
     else:
         return {
-            "status": "failed",
+            "status": "fail",
             "message": "vitek_id must have GN or GP only."
         }
 
@@ -248,11 +248,11 @@ def uploading(vitek_id: int, uploadfile: dict):
         except Exception as ex:
             upload_result_func([str(ex)], result[1], uploadfile["id"])
             row_count = 0
-            status = "failed"
+            status = "fail"
     else:
         upload_result_func(result[2], result[1], uploadfile["id"])
         row_count = 0
-        status = "failed"
+        status = "fail"
 
     # Update Filelog
     finish_date = datetime.datetime.now()
@@ -275,7 +275,7 @@ def uploading(vitek_id: int, uploadfile: dict):
 def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile = File(...)):
     if vitek_id not in pd.read_sql_query("SELECT id FROM public.vitek_id_card", conn).values:
         return {
-            "status": "failed",
+            "status": "fail",
         }
     start_time = time.time()
     upload_date = datetime.datetime.now()
@@ -311,7 +311,7 @@ def upload_logs(page: int = 1):
 
     if offset < 0:
         return {
-            "status": "failed",
+            "status": "fail",
         }
 
     # select count
@@ -424,7 +424,7 @@ def view_all_files(page: int = 1):
 
     if offset < 0:
         return {
-            "status": "failed",
+            "status": "fail",
         }
 
     # select count
@@ -586,7 +586,8 @@ def model_retraining(background_tasks: BackgroundTasks):
     for vitek_id in [1, 2]:
         vitek = ["GN", "GP"][vitek_id - 1]
         file_id_list = list(pd.read_sql_query(file_query, conn, params={"v_id": vitek_id})["file_id"].values)
-
+        
+        # sort list
         file_id_list.sort()
         table_copy[vitek].file_id.sort()
         
@@ -621,7 +622,7 @@ def retraining_logs(page: int = 1):
 
     if offset < 0:
         return {
-            "status": "failed",
+            "status": "fail",
         }
 
     # select count
@@ -1034,7 +1035,7 @@ def delete_file(file_id: int, background_tasks: BackgroundTasks):
     files = pd.read_sql_query("SELECT id FROM public.file", conn)
     if file_id not in files["id"].values:
         return {
-            "status": "failed",
+            "status": "fail",
         }
     files_used = pd.read_sql_query(
         "SELECT DISTINCT file_id FROM public.model_group_file", conn)

@@ -275,8 +275,20 @@ class ModelRetraining:
     ########### Query ##########
     
     def get_train_test(self, anti_id: int):
-        query_train_id = sqlalchemy.text("SELECT report_id FROM public.report_train WHERE sub_type = 'train' AND antimicrobial_id = :anti_id")
-        query_test_id = sqlalchemy.text("SELECT report_id FROM public.report_train WHERE sub_type = 'test' AND antimicrobial_id = :anti_id")
+        query_train_id = sqlalchemy.text("""
+                                         SELECT report_id 
+                                         FROM public.report_train
+                                         INNER JOIN public.report ON public.report.id = public.report_train.report_id
+                                         INNER JOIN public.file ON public.file.id = public.report.file_id
+                                         WHERE sub_type = 'train' AND antimicrobial_id = :anti_id AND active
+                                         """)
+        query_test_id = sqlalchemy.text("""
+                                        SELECT report_id
+                                        FROM public.report_train
+                                        INNER JOIN public.report ON public.report.id = public.report_train.report_id
+                                        INNER JOIN public.file ON public.file.id = public.report.file_id 
+                                        WHERE sub_type = 'test' AND antimicrobial_id = :anti_id AND active
+                                        """)
         train_id = pd.read_sql_query(query_train_id, self.conn, params={"anti_id": anti_id})["report_id"]
         test_id = pd.read_sql_query(query_test_id, self.conn, params={"anti_id": anti_id})["report_id"]
         df_train = self.db.table.loc[train_id]
@@ -294,7 +306,12 @@ class ModelRetraining:
         return anti_ans
     
     def get_test_bycase(self):
-        query_test_id = sqlalchemy.text("SELECT id FROM public.report WHERE type = 'test' AND vitek_id = :v_id")
+        query_test_id = sqlalchemy.text("""
+                                        SELECT public.report.id 
+                                        FROM public.report
+                                        INNER JOIN public.file ON public.file.id = public.report.file_id 
+                                        WHERE type = 'test' AND public.report.vitek_id = :v_id AND active
+                                        """)
         test_id = pd.read_sql_query(query_test_id, self.conn, params={"v_id": self.vitek_id})
         df_test = self.db.table.loc[test_id['id']]
         return df_test
@@ -357,7 +374,8 @@ class ModelRetraining:
         query = sqlalchemy.text("SELECT * FROM public.model_configuration WHERE antimicrobial_id = :anti_id")
         config = pd.read_sql_query(query, self.conn, params={"anti_id": anti_id}).iloc[0]
         model = eval(config["algorithm"])(eval_metric=f1_score, 
-                                     verbosity=0,  
+                                     verbosity=0,
+                                     use_label_encoder=False,
                                      random_state=int(config["random_state"]),
                                      n_estimators=int(config["n_estimators"]),
                                      gamma=float(config["gamma"]),
