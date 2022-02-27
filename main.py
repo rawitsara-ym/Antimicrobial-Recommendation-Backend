@@ -988,7 +988,7 @@ def dashboard_performance_by_version(vitek_id, version):
 @app.get("/api/configuration_xgb_parameter")
 def configuration_xgb_parameter(vitek_id):
     query = sqlalchemy.text("""
-    SELECT anti.name , n_estimators, gamma, max_depth, subsample, colsample_bytree, learning_rate, algorithm,  random_state
+    SELECT anti.name , n_estimators, gamma, max_depth, subsample, colsample_bytree, learning_rate,  random_state
     FROM public.model_configuration AS mc
     INNER JOIN public.antimicrobial_answer AS anti ON anti.id = mc.antimicrobial_id
     WHERE vitek_id = :v_id;""")
@@ -998,8 +998,6 @@ def configuration_xgb_parameter(vitek_id):
     def to_params(params: pd.Series):
         indexes = params.index.tolist()
         indexes.pop(indexes.index("name"))
-        indexes.pop(indexes.index("algorithm"))
-        indexes.pop(indexes.index("random_state"))
         param_str = ", ".join(
             [f"{item[0]} = {item[1]}" for item in params[indexes].items()])
         return {
@@ -1017,7 +1015,7 @@ def configuration_xgb_parameter(vitek_id):
 @app.get("/api/configuration_smote")
 def configuration_smote(vitek_id):
     query = sqlalchemy.text("""
-    SELECT anti.name , smote , smote_random_state
+    SELECT anti.name , smote
     FROM public.model_configuration AS mc
     INNER JOIN public.antimicrobial_answer AS anti ON anti.id = mc.antimicrobial_id
     WHERE vitek_id = :v_id;""")
