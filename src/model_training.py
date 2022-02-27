@@ -354,11 +354,10 @@ class ModelRetraining:
         return int(mgm_id)
     
     def get_model_configuration(self, anti_id: int):
-        query = sqlalchemy.text("SELECT * FROM public.model_configuration WHERE antimicrobial_id = 1")
+        query = sqlalchemy.text("SELECT * FROM public.model_configuration WHERE antimicrobial_id = :anti_id")
         config = pd.read_sql_query(query, self.conn, params={"anti_id": anti_id}).iloc[0]
         model = eval(config["algorithm"])(eval_metric=f1_score, 
                                      verbosity=0,  
-                                     use_label_encoder=False,
                                      random_state=int(config["random_state"]),
                                      n_estimators=int(config["n_estimators"]),
                                      gamma=float(config["gamma"]),
