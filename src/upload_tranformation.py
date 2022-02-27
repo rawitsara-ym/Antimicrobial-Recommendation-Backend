@@ -236,8 +236,8 @@ class UploadTranformation:
         report.loc[index_train, "type"] = "train"
         report.loc[index_test, "type"] = "test"
         query = sqlalchemy.text("""
-        INSERT INTO public.report(hn , date_of_submission, report_issued_date, species_id, bacteria_genus_id,submitted_sample_id,vitek_id,file_id) 
-        VALUES (:hn , :date_of_submission, :report_issued_date, :species_id, :bacteria_genus_id,:submitted_sample_id,:vitek_id,:file_id) RETURNING id""")
+        INSERT INTO public.report(hn , date_of_submission, report_issued_date, species_id, bacteria_genus_id,submitted_sample_id,vitek_id,type,file_id) 
+        VALUES (:hn , :date_of_submission, :report_issued_date, :species_id, :bacteria_genus_id,:submitted_sample_id,:vitek_id,:type,:file_id) RETURNING id""")
         with self.conn.connect() as con:
             id_arr = []
             for i in report.index:
