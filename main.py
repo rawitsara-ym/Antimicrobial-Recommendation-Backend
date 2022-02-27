@@ -15,6 +15,7 @@ from src.table_to_csv import TableToCsv
 from src.upload_validator import UploadValidator
 from src.upload_tranformation import UploadTranformation
 from src.model_training import ModelRetraining
+from fastapi.middleware.cors import CORSMiddleware
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path)
@@ -24,6 +25,19 @@ DB_USERNAME = os.environ.get("DB_USERNAME")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
 
 app = FastAPI()
+
+origins = [
+    "http://localhost:8080",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 conn = sqlalchemy.create_engine(
     f"postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}/antimicrobial_system")
 
@@ -827,7 +841,9 @@ def configuration_xgb_parameter(vitek_id):
 
     def to_params(params: pd.Series):
         indexes = params.index.tolist()
-        indexes.pop(0)
+        indexes.pop(indexes.index("name"))
+        indexes.pop(indexes.index("algorithm"))
+        indexes.pop(indexes.index("random_state"))
         param_str = ", ".join(
             [f"{item[0]} = {item[1]}" for item in params[indexes].items()])
         return {
@@ -869,8 +885,7 @@ def configuration_smote(vitek_id):
 
 def delete_file_db(file_id: int):
     with conn.connect() as con:
-        query = sqlalchemy.text(
-            "UPDATE public.file SET active=False WHERE id = :id;")
+        query = sqlalchemy.text("DELETE FROM public.file WHERE id = :id;")
         con.execute(query, id=file_id)
 
 
@@ -883,17 +898,17 @@ def delete_file(file_id: int, background_tasks: BackgroundTasks):
         }
     files_used = pd.read_sql_query(
         "SELECT DISTINCT file_id FROM public.model_group_file", conn)
+
+    # DELETE FILE SET STATUS
+    with conn.connect() as con:
+        query = sqlalchemy.text(
+            "UPDATE public.file SET active=False WHERE id = :id;")
+        con.execute(query, id=file_id)
+
+    # DELETE FILE IN DATABASE
     if file_id not in files_used['file_id'].values:
-        # DELETE FILE IN DATABASE
-        with conn.connect() as con:
-            query = sqlalchemy.text("DELETE FROM public.file WHERE id = :id;")
-            con.execute(query, id=file_id)
-    else:
-        # DELETE FILE SET STATUS
         background_tasks.add_task(delete_file_db, file_id=file_id)
 
     return {
         "status": "success",
     }
-
-
