@@ -511,28 +511,17 @@ def view_file_retraining_log(retraining_log_id: int):
 # ---------- RETRAINING ----------
 
 
-def training(vitek_id: int, table_report: pd.DataFrame):
+def training(vitek_id: int, table_report: pd.DataFrame, retraining_id: int):
     # start training
     start_date = datetime.datetime.now()
     with conn.connect() as con:
         query = sqlalchemy.text(
-            """INSERT INTO public.retraining_log(vitek_id, start_date, status)
-            VALUES (:vitek_id, :start_date, 'training')
-            RETURNING id;
+            """
+            UPDATE public.retraining_log
+            SET start_date=:start_date, status='training'
+            WHERE id = :id
             """)
-        rs = con.execute(query, vitek_id=vitek_id, start_date=start_date)
-        for row in rs:
-            retraining_id = row[0]
-
-    # INSERT file_retraining_log
-    with conn.connect() as con:
-        query = sqlalchemy.text(
-            """INSERT INTO public.file_retraining_log(retraining_log_id, file_id)
-            VALUES (:retraining_log_id, :file_id)
-            """)
-        for file_id in table_report.file_id:
-            rs = con.execute(
-                query, retraining_log_id=retraining_id, file_id=file_id)
+        con.execute(query, start_date=start_date, id=retraining_id)
 
     # Retraining
     model_retraining = ModelRetraining(table_report, vitek_id, conn)
@@ -545,10 +534,36 @@ def training(vitek_id: int, table_report: pd.DataFrame):
         query = sqlalchemy.text(
             """
             UPDATE public.retraining_log
-            SET finish_date=:finish_date, time=:time, status=:status, model_group_id=:mg_id
-            WHERE id = :id""")
-        rs = con.execute(query, finish_date=finish_date, time=delta_time, status="success",
-                         mg_id=model_group_id, id=retraining_id)
+            SET finish_date=:finish_date, time=:time, status='success', model_group_id=:mg_id
+            WHERE id = :id
+            """)
+        con.execute(query, finish_date=finish_date, time=delta_time,
+            mg_id=model_group_id, id=retraining_id)
+
+        
+def add_retraining_log(vitek_id: int, file_id_list: list):
+    # INSERT retraining log
+    with conn.connect() as con:
+        query = sqlalchemy.text(
+            """INSERT INTO public.retraining_log(vitek_id, status)
+            VALUES (:vitek_id, 'pending')
+            RETURNING id;
+            """)
+        rs = con.execute(query, vitek_id=vitek_id)
+        for row in rs:
+            retraining_id = row[0]
+
+    # INSERT file_retraining_log
+    with conn.connect() as con:
+        query = sqlalchemy.text(
+            """INSERT INTO public.file_retraining_log(retraining_log_id, file_id)
+            VALUES (:retraining_log_id, :file_id)
+            """)
+        for file_id in file_id_list:
+            rs = con.execute(
+                query, retraining_log_id=retraining_id, file_id=file_id)
+    
+    return retraining_id
 
 
 @app.post("/api/retraining/")
@@ -608,7 +623,8 @@ def model_retraining(background_tasks: BackgroundTasks):
         if file_id_list == table_copy[vitek].file_id:
             count_training += 1
         else:
-            background_tasks.add_task(training, vitek_id, table_copy[vitek])
+            retraining_id = add_retraining_log(vitek_id, table_copy[vitek].file_id)
+            background_tasks.add_task(training, vitek_id, table_copy[vitek], retraining_id)
     
     if count_training >= 2:
         return {
@@ -660,7 +676,7 @@ def retraining_logs(page: int = 1):
         FROM public.retraining_log AS log 
         INNER JOIN public.vitek_id_card AS vi ON log.vitek_id = vi.id
         LEFT JOIN public.model_group AS mg ON mg.id = log.model_group_id
-        ORDER BY finish_date DESC
+        ORDER BY finish_date DESC, start_date
         LIMIT :app
         OFFSET :offset
         """)
@@ -674,7 +690,7 @@ def retraining_logs(page: int = 1):
             "id": int(_id),
             "vitek_id": int(retraining_logs.loc[_id, "vitek_id"]),
             "vitek_name": retraining_logs.loc[_id, "vitek_name"],
-            "start_date": retraining_logs.loc[_id, "start_date"].strftime("%d-%b-%Y %H:%M:%S"),
+            "start_date": retraining_logs.loc[_id, "start_date"].strftime("%d-%b-%Y %H:%M:%S") if pd.notna(retraining_logs.loc[_id, "start_date"]) else '-',
             "finish_date": retraining_logs.loc[_id, "finish_date"].strftime("%d-%b-%Y %H:%M:%S") if pd.notna(retraining_logs.loc[_id, "finish_date"]) else '-',
             "time": int(retraining_logs.loc[_id, "time"]) if pd.notna(retraining_logs.loc[_id, "time"]) else '-',
             "status": retraining_logs.loc[_id, "status"],
