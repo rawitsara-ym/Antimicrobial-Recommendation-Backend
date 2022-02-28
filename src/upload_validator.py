@@ -1,4 +1,3 @@
-# %%
 import pandas as pd
 
 
@@ -93,9 +92,9 @@ class UploadValidator:
                         f'คอลัมน์ {chk_bool} มีค่าที่ไม่ใช่ True หรือ False ที่แถว {", ".join(self.get_true_index_str(result))}.')
 
         # Check vitek_id
-
         vitek = ["GN", "GP"]
-        result = (df["vitek_id"].apply(str.upper) != vitek[self.vitek_id - 1])
+        result = (df[df["vitek_id"].notnull()]["vitek_id"].apply(
+            str.upper) != vitek[self.vitek_id - 1])
         if result.sum() > 0:
             error.append(
                 f'คอลัมน์ vitek_id มีค่าที่ไม่ใช่ {vitek[self.vitek_id - 1]} ที่แถว {", ".join(self.get_true_index_str(result))}.')

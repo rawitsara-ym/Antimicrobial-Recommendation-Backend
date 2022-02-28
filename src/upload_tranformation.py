@@ -269,5 +269,3 @@ class UploadTranformation:
         report_train.to_sql('report_train', schema='public',
                             con=self.conn, if_exists='append', index=False)
         return len(report)
-
-# %%
