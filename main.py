@@ -1073,7 +1073,7 @@ def delete_file(file_id: int, background_tasks: BackgroundTasks):
         return {
             "status": "fail",
             "data" : {
-                "message" : "ตอนนี้ข้อมูลกำลังเทรนโมเดลโปรดรอหรือทำการยกเลิกการเทรนโมเดล"
+                "message" : "ขณะนี้ระบบกำลังเทรนโมเดลอยู่ หากต้องการลบไฟล์ โปรดรอหรือยกเลิกการเทรนโมเดล"
             }
         }
 
