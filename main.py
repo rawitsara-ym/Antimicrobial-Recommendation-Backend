@@ -477,9 +477,10 @@ def view_all_files(page: int = 1):
             "total_row": count
         }
     }
- 
+
  # ---------- VIEW FILE RETRAINING LOG  ----------
-    
+
+
 @app.get("/api/view_file_retraining_log")
 def view_file_retraining_log(retraining_log_id: int):
     query = sqlalchemy.text("""
@@ -490,7 +491,8 @@ def view_file_retraining_log(retraining_log_id: int):
         ORDER BY upload_at DESC
         """)
 
-    files_fetch = pd.read_sql_query(query, con=conn, params={"re_log_id": retraining_log_id})
+    files_fetch = pd.read_sql_query(query, con=conn, params={
+                                    "re_log_id": retraining_log_id})
 
     files = []
     files_fetch = files_fetch.set_index("file_id")
@@ -553,7 +555,7 @@ def training(vitek_id: int, table_report: pd.DataFrame):
 
 @app.post("/api/retraining/")
 def model_retraining(background_tasks: BackgroundTasks):
-    
+
     # Check training status
     count_training_status = pd.read_sql_query(
         """ SELECT COUNT(*)
@@ -569,7 +571,7 @@ def model_retraining(background_tasks: BackgroundTasks):
                 "message": "ขณะนี้ระบบกำลังเทรนโมเดลอยู่"
             }
         }
-        
+
     # Check upload pending status
     count_pending_status = pd.read_sql_query(
         """ SELECT COUNT(*)
@@ -585,7 +587,7 @@ def model_retraining(background_tasks: BackgroundTasks):
                 "message": "ไม่สามารถเทรนโมเดลได้ เนื่องจากขณะนี้ระบบกำลังอัปโหลดไฟล์อยู่"
             }
         }
-    
+
     # Check last model_group's file
     file_query = sqlalchemy.text(
         """ SELECT file_id
@@ -599,34 +601,36 @@ def model_retraining(background_tasks: BackgroundTasks):
     table_copy = copy.copy(table_csv)
     for vitek_id in [1, 2]:
         vitek = ["GN", "GP"][vitek_id - 1]
-        file_id_list = list(pd.read_sql_query(file_query, conn, params={"v_id": vitek_id})["file_id"].values)
-        
+        file_id_list = list(pd.read_sql_query(file_query, conn, params={
+                            "v_id": vitek_id})["file_id"].values)
+
         # sort list
         file_id_list.sort()
         table_copy[vitek].file_id.sort()
-        
+
         if file_id_list == table_copy[vitek].file_id:
             count_training += 1
         else:
             background_tasks.add_task(training, vitek_id, table_copy[vitek])
-    
+
     if count_training >= 2:
         return {
-                "status": "success",
-                "data": {
-                    "status": "fail",
-                    "message": "ขณะนี้ยังไม่มีข้อมูลใหม่สำหรับเทรนโมเดล"
-                }
-            } 
- 
+            "status": "success",
+            "data": {
+                "status": "fail",
+                "message": "ขณะนี้ยังไม่มีข้อมูลใหม่สำหรับเทรนโมเดล"
+            }
+        }
+
     return {
         "status": "success",
         "data": {
             "status": "success",
             "message": "ขณะนี้ระบบได้เริ่มเทรนโมเดลแล้ว"
         }
-        
+
     }
+
 
 @app.get("/api/retraining_logs/")
 def retraining_logs(page: int = 1):
@@ -689,7 +693,7 @@ def retraining_logs(page: int = 1):
             "total": count
         }
     }
-    
+
 
 # ---------- DASHBOARD ----------
 
@@ -1056,8 +1060,12 @@ def delete_file(file_id: int, background_tasks: BackgroundTasks):
     # DELETE FILE SET STATUS
     with conn.connect() as con:
         query = sqlalchemy.text(
-            "UPDATE public.file SET active=False WHERE id = :id;")
-        con.execute(query, id=file_id)
+            "UPDATE public.file SET active=False WHERE id = :id RETURNING vitek_id;")
+        rs = con.execute(query, id=file_id)
+        for row in rs:
+            vitek_id = row[0]
+        vitek = ['GN', 'GP'][vitek_id - 1]
+        table_csv[vitek].startup()
 
     # DELETE FILE IN DATABASE
     if file_id not in files_used['file_id'].values:
