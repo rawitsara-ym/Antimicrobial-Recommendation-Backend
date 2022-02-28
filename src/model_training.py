@@ -43,6 +43,10 @@ class ModelRetraining:
         dir_path = f"./ml_model/{vitek}/version_{last_ver+1}"
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
+            
+        # Binning submitted sample
+        self.db.table = self.binning_less_than(self.db.table , "submitted_sample", 10)
+        submitted_sample_binning = list(self.db.table["submitted_sample"].unique())
 
         rows_insert = []
 
@@ -96,7 +100,7 @@ class ModelRetraining:
             rows_insert.append(row)
 
         # INSERT model
-        model_group_id = self.insert_into_db(rows_insert, last_ver+1)
+        model_group_id = self.insert_into_db(rows_insert, submitted_sample_binning, last_ver+1)
 
         # Test by case 
         test_by_case_measure = self.test_by_case(last_ver+1)
@@ -205,7 +209,7 @@ class ModelRetraining:
             performance = "same"
         return performance
     
-    def insert_into_db(self, rows: list, version: int):
+    def insert_into_db(self, rows: list, submitted_sample_binning: list, version: int):
         # INSERT model
         with self.conn.connect() as con:
             query = sqlalchemy.text(
@@ -253,6 +257,15 @@ class ModelRetraining:
                 """)
             for file_id in self.db.file_id:
                 rs = con.execute(query, file_id=file_id, model_group_id=model_group_id)
+                
+        # INSERT submitted_sample_binning_model_group
+        with self.conn.connect() as con:
+            query = sqlalchemy.text(
+                """
+                INSERT INTO public.submitted_sample_binning_model_group(model_group_id, schema) 
+                VALUES (:model_group_id, :schema) 
+                """)
+            con.execute(query, model_group_id=model_group_id, schema=str(submitted_sample_binning))
 
         return model_group_id
     
@@ -279,18 +292,19 @@ class ModelRetraining:
                                          SELECT report_id 
                                          FROM public.report_train
                                          INNER JOIN public.report ON public.report.id = public.report_train.report_id
-                                         INNER JOIN public.file ON public.file.id = public.report.file_id
-                                         WHERE sub_type = 'train' AND antimicrobial_id = :anti_id AND active
+                                         WHERE sub_type = 'train' AND antimicrobial_id = :anti_id AND file_id = :file_id
                                          """)
         query_test_id = sqlalchemy.text("""
                                         SELECT report_id
                                         FROM public.report_train
                                         INNER JOIN public.report ON public.report.id = public.report_train.report_id
-                                        INNER JOIN public.file ON public.file.id = public.report.file_id 
-                                        WHERE sub_type = 'test' AND antimicrobial_id = :anti_id AND active
+                                        WHERE sub_type = 'test' AND antimicrobial_id = :anti_id AND file_id = :file_id
                                         """)
-        train_id = pd.read_sql_query(query_train_id, self.conn, params={"anti_id": anti_id})["report_id"]
-        test_id = pd.read_sql_query(query_test_id, self.conn, params={"anti_id": anti_id})["report_id"]
+        train_id = []
+        test_id = []
+        for file_id in self.db.file_id:
+            train_id.extend(pd.read_sql_query(query_train_id, self.conn, params={"anti_id": anti_id, "file_id": file_id})["report_id"])
+            test_id.extend(pd.read_sql_query(query_test_id, self.conn, params={"anti_id": anti_id, "file_id": file_id})["report_id"])
         df_train = self.db.table.loc[train_id]
         df_test = self.db.table.loc[test_id]
         return df_train, df_test
@@ -309,11 +323,12 @@ class ModelRetraining:
         query_test_id = sqlalchemy.text("""
                                         SELECT public.report.id 
                                         FROM public.report
-                                        INNER JOIN public.file ON public.file.id = public.report.file_id 
-                                        WHERE type = 'test' AND public.report.vitek_id = :v_id AND active
+                                        WHERE type = 'test' AND public.report.vitek_id = :v_id AND file_id = :file_id
                                         """)
-        test_id = pd.read_sql_query(query_test_id, self.conn, params={"v_id": self.vitek_id})
-        df_test = self.db.table.loc[test_id['id']]
+        test_id = []
+        for file_id in self.db.file_id:
+            test_id.extend(pd.read_sql_query(query_test_id, self.conn, params={"v_id": self.vitek_id, "file_id":  file_id})['id'])
+        df_test = self.db.table.loc[test_id]
         return df_test
 
     def get_model(self, version: int):
