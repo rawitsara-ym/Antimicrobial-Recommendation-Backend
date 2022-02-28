@@ -1049,6 +1049,15 @@ def delete_file_db(file_id: int):
 
 @app.delete("/api/delete_file")
 def delete_file(file_id: int, background_tasks: BackgroundTasks):
+    retraining_status = pd.read_sql_query("SELECT DISTINCT status FROM public.retraining_log",conn).values
+    if "pending" in retraining_status or "training" in retraining_status  :
+        return {
+            "status": "fail",
+            "data" : {
+                "message" : "ตอนนี้ข้อมูลกำลังเทรนโมเดลโปรดรอหรือทำการยกเลิกการเทรนโมเดล"
+            }
+        }
+
     files = pd.read_sql_query("SELECT id FROM public.file", conn)
     if file_id not in files["id"].values:
         return {
