@@ -163,6 +163,8 @@ class UploadValidator:
         old_cols_sir = set(
             c for c in self.db.table.columns if c.startswith("S/I/R_"))
         new_cols_sir = in_cols_sir - old_cols_sir
+        new_cols_sir = [
+            col for col in new_cols_sir if df[col].notna().sum() > 0]
         if len(new_cols_sir) > 0:
             warning.append(
                 'มีการเพิ่ม Antimicrobial S/I/R ได้แก่ ' + ", ".join(new_cols_sir))
@@ -171,6 +173,8 @@ class UploadValidator:
         old_cols_ans = set(
             c for c in self.db.table.columns if c.startswith("ans_"))
         new_cols_ans = in_cols_ans - old_cols_ans
+        new_cols_ans = [
+            col for col in new_cols_ans if df[col].sum() > 0]
         if len(new_cols_ans) > 0:
             warning.append(
                 'มีการเพิ่ม Antimicrobial Answer ได้แก่ ' + ", ".join(new_cols_ans))

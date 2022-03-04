@@ -120,6 +120,7 @@ class UploadTranformation:
             return sir_name[anti]
 
         sir["name"] = sir["name"].map(clean_tranform_sir_name)
+        sir = sir[sir["name"] != 0]
 
         sir = sir.rename(
             {"index": "report_id", "name": "antimicrobial_id"}, axis=1)

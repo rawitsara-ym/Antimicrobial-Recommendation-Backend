@@ -547,8 +547,8 @@ def add_retraining_log(vitek_id: int, file_id_list: list):
     # INSERT retraining log
     with conn.connect() as con:
         query = sqlalchemy.text(
-            """INSERT INTO public.retraining_log(vitek_id, status)
-            VALUES (:vitek_id, 'pending')
+            """INSERT INTO public.retraining_log(vitek_id, status , cancel)
+            VALUES (:vitek_id, 'pending' , false)
             RETURNING id;
             """)
         rs = con.execute(query, vitek_id=vitek_id)
