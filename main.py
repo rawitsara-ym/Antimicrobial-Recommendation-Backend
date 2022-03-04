@@ -541,6 +541,9 @@ def training(vitek_id: int, table_report: pd.DataFrame, retraining_id: int):
             """)
         con.execute(query, finish_date=finish_date, time=delta_time,
             mg_id=model_group_id, id=retraining_id)
+    
+    # Reload Models
+    predictor.startup()
 
         
 def add_retraining_log(vitek_id: int, file_id_list: list):
@@ -1070,7 +1073,7 @@ def delete_file(file_id: int, background_tasks: BackgroundTasks):
         return {
             "status": "fail",
             "data" : {
-                "message" : "ตอนนี้ข้อมูลกำลังเทรนโมเดลโปรดรอหรือทำการยกเลิกการเทรนโมเดล"
+                "message" : "ขณะนี้ระบบกำลังเทรนโมเดลอยู่ หากต้องการลบไฟล์ โปรดรอหรือยกเลิกการเทรนโมเดล"
             }
         }
 
