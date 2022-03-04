@@ -94,6 +94,7 @@ class ModelRetraining:
                 "f1": measure["f1"]
             }
             rows_insert.append(row)
+            """  Check  """
 
         # INSERT model
         model_group_id = self.insert_into_db(rows_insert, last_ver+1)
@@ -114,6 +115,7 @@ class ModelRetraining:
                     recall=test_by_case_measure["recall"], 
                     f1=test_by_case_measure["f1"], id=model_group_id)
 
+        """  Checked  """
         # UPDATE model current version
         self.update_model_current_version()
         

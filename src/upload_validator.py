@@ -1,11 +1,22 @@
 import pandas as pd
 
+import itertools
+
 
 class UploadValidator:
     ROW_MINIMUN = 300
 
     def get_true_index_str(self, series: pd.Series):
-        return series[series].index.map(str)
+        def intervals_extract(iterable):
+            iterable = sorted(set(iterable))
+            for key, group in itertools.groupby(enumerate(iterable),
+                                                lambda t: t[1] - t[0]):
+                group = list(group)
+                if group[0][1] != group[-1][1]:
+                    yield str(group[0][1]) + " - " + str(group[-1][1])
+                else:
+                    yield str(group[0][1])
+        return list(intervals_extract(series[series].index))
 
     def __init__(self, db, vitek_id) -> None:
         self.db = db
@@ -89,7 +100,7 @@ class UploadValidator:
                     x).lower() not in ["true", "false"])
                 if result.sum() > 0:
                     error.append(
-                        f'คอลัมน์ {chk_bool} มีค่าที่ไม่ใช่ True หรือ False ที่แถว {", ".join(self.get_true_index_str(result))}.')
+                        f'คอลัมน์ {chk_bool} มีค่าที่ไม่ใช่ True หรือ False ที่แถว {", ".join(self.get_true_index_str(result))}')
 
         # Check vitek_id
         vitek = ["GN", "GP"]
@@ -97,7 +108,7 @@ class UploadValidator:
             str.upper) != vitek[self.vitek_id - 1])
         if result.sum() > 0:
             error.append(
-                f'คอลัมน์ vitek_id มีค่าที่ไม่ใช่ {vitek[self.vitek_id - 1]} ที่แถว {", ".join(self.get_true_index_str(result))}.')
+                f'คอลัมน์ vitek_id มีค่าที่ไม่ใช่ {vitek[self.vitek_id - 1]} ที่แถว {", ".join(self.get_true_index_str(result))}')
         return error
 
     def validate_duplicate_row(self, df: pd.DataFrame):
@@ -127,7 +138,7 @@ class UploadValidator:
 
         if result.sum() > 0:
             error.append(
-                f'ไฟล์มีแถวที่ซ้ำกับฐานข้อมูล ดังนี้  {", ".join(self.get_true_index_str(result))}')
+                f'ไฟล์มีแถวที่ซ้ำกับฐานข้อมูล ดังนี้ {", ".join(self.get_true_index_str(result))}')
 
         return error
 
