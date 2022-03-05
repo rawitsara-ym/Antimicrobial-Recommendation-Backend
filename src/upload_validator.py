@@ -149,9 +149,9 @@ class UploadValidator:
 
         for chk in check_newvalue_cell:
 
-            old_value = set(row[0] for row in self.db.table[chk].values)
+            old_value = set(row for row in self.db.table[chk].values)
 
-            input_value = set(row[0] for row in df[chk].values)
+            input_value = set(row for row in df[chk].values)
 
             new_value = input_value - old_value
 

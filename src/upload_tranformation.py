@@ -201,8 +201,18 @@ class UploadTranformation:
         return report, report_sir, report_ans
 
     def split_train_test_bycase(self, report: pd.DataFrame):
+        speices = report['species_id']
+        remain = []
+        for sp, not_div in (speices.value_counts() < 2).items():
+            if not_div:
+                remain.extend(speices[speices == sp].index.tolist())
+                speices = speices.drop(
+                    index=speices[speices == sp].index.tolist())
         train, test = train_test_split(
-            report.index, stratify=report["species_id"], test_size=0.1, random_state=0)
+            speices.index, stratify=speices.values, test_size=0.1, random_state=0)
+        train = train.tolist()
+        test = test.tolist()
+        train.extend(remain)
         return train, test
 
     def split_train_test_byanti(self, report: pd.DataFrame, anti: pd.DataFrame):

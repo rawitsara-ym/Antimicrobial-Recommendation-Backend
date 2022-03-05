@@ -15,6 +15,7 @@ from src.table_to_csv import TableToCsv
 from src.upload_validator import UploadValidator
 from src.upload_tranformation import UploadTranformation
 from src.model_training import ModelRetraining
+from src.retraining_status import check_retraining_status
 from fastapi.middleware.cors import CORSMiddleware
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -47,7 +48,7 @@ predictor = Predictior(conn)
 table_csv = {'GN': TableToCsv(conn, 1), 'GP': TableToCsv(conn, 2)}
 
 
-@app.get("/api/species/")
+@app.get("/api/species")
 def species():
     species = pd.read_sql_query(
         "SELECT id , name FROM public.species", conn)
@@ -62,7 +63,7 @@ def species():
     }
 
 
-@app.get("/api/vitek_id/")
+@app.get("/api/vitek_id")
 def vitek_id():
     vitek_id = pd.read_sql_query(
         "SELECT id , name FROM public.vitek_id_card", conn)
@@ -79,7 +80,7 @@ def vitek_id():
     }
 
 
-@app.get("/api/bacteria_genus/")
+@app.get("/api/bacteria_genus")
 def bacteria_genus():
     bacteria_genus = pd.read_sql_query(
         "SELECT id , name FROM public.bacteria_genus", conn)
@@ -96,7 +97,7 @@ def bacteria_genus():
     }
 
 
-@app.get("/api/submitted_sample/")
+@app.get("/api/submitted_sample")
 def submitted_sample():
     submitted_sample_binning_latest = pd.read_sql_query(
         """
@@ -132,7 +133,7 @@ def submitted_sample():
     }
 
 
-@app.get("/api/antimicrobial_sir/")
+@app.get("/api/antimicrobial_sir")
 def antimicrobial_sir(v_id):
     query = sqlalchemy.text(
         "SELECT id , name , sir_type_id FROM public.antimicrobial_sir WHERE vitek_id = :v_id")
@@ -173,7 +174,7 @@ def antimicrobial_sir(v_id):
     }
 
 
-@app.post("/api/predict/")
+@app.post("/api/predict")
 def predict(petDetail: PetDetail):
 
     species = petDetail.species.lower().strip()
@@ -285,7 +286,7 @@ def uploading(vitek_id: int, uploadfile: dict):
     # print("finish")
 
 
-@app.post("/api/upload/")
+@app.post("/api/upload")
 def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile = File(...)):
     if vitek_id not in pd.read_sql_query("SELECT id FROM public.vitek_id_card", conn).values:
         return {
@@ -298,7 +299,7 @@ def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile
         shutil.copyfileobj(in_file.file, out_file)
     with conn.connect() as con:
         query = sqlalchemy.text(
-            "INSERT INTO public.upload_file_log(filename, start_date,status , vitek_id) VALUES (:filename, :date, 'pending' , :vitek_id) RETURNING id;")
+            "INSERT INTO public.upload_file_log(filename, start_date,status , vitek_id) VALUES (:filename, :date, 'uploading' , :vitek_id) RETURNING id;")
         rs = con.execute(query, filename=in_file.filename,
                          date=upload_date, vitek_id=vitek_id)
         for row in rs:
@@ -317,7 +318,7 @@ def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile
     }
 
 
-@app.get("/api/upload_logs/")
+@app.get("/api/upload_logs")
 def upload_logs(page: int = 1):
     # show list
     AMOUNT_PER_PAGE = 10
@@ -430,7 +431,7 @@ def view_filename(model_group_id: int):
 # ---------- VIEW FILE  ----------
 
 
-@app.get("/api/view_all_files/")
+@app.get("/api/view_all_files")
 def view_all_files(page: int = 1):
     # show list
     AMOUNT_PER_PAGE = 10
@@ -514,6 +515,19 @@ def view_file_retraining_log(retraining_log_id: int):
 
 
 def training(vitek_id: int, table_report: pd.DataFrame, retraining_id: int):
+    # cancel before training
+    if check_retraining_status(retraining_id, conn):
+        date = datetime.datetime.now()
+        with conn.connect() as con:
+            query = sqlalchemy.text(
+                """
+                UPDATE public.retraining_log
+                SET start_date=:date, status='cancel' , finish_date=:date, time=0, cancel=true
+                WHERE id = :id
+                """)
+            con.execute(query, date=date, id=retraining_id)
+        return
+
     # start training
     start_date = datetime.datetime.now()
     with conn.connect() as con:
@@ -527,7 +541,21 @@ def training(vitek_id: int, table_report: pd.DataFrame, retraining_id: int):
 
     # Retraining
     model_retraining = ModelRetraining(table_report, vitek_id, conn)
-    model_group_id = model_retraining.training()
+    model_group_id = model_retraining.training(retraining_id)
+
+    # cancel after training
+    if model_group_id == -1:
+        finish_date = datetime.datetime.now()
+        delta_time = (finish_date - start_date).seconds
+        with conn.connect() as con:
+            query = sqlalchemy.text(
+                """
+                UPDATE public.retraining_log
+                SET status='cancel' , finish_date=:finish_date, time=:time, cancel=true
+                WHERE id = :id
+                """)
+            con.execute(query, finish_date=finish_date, time=delta_time, id=retraining_id)
+        return
 
     # finish training
     finish_date = datetime.datetime.now()
@@ -540,12 +568,12 @@ def training(vitek_id: int, table_report: pd.DataFrame, retraining_id: int):
             WHERE id = :id
             """)
         con.execute(query, finish_date=finish_date, time=delta_time,
-            mg_id=model_group_id, id=retraining_id)
-    
+                    mg_id=model_group_id, id=retraining_id)
+
     # Reload Models
     predictor.startup()
 
-        
+
 def add_retraining_log(vitek_id: int, file_id_list: list):
     # INSERT retraining log
     with conn.connect() as con:
@@ -567,11 +595,11 @@ def add_retraining_log(vitek_id: int, file_id_list: list):
         for file_id in file_id_list:
             rs = con.execute(
                 query, retraining_log_id=retraining_id, file_id=file_id)
-    
+
     return retraining_id
 
 
-@app.post("/api/retraining/")
+@app.post("/api/retraining")
 def model_retraining(background_tasks: BackgroundTasks):
 
     # Check training status
@@ -594,7 +622,7 @@ def model_retraining(background_tasks: BackgroundTasks):
     count_pending_status = pd.read_sql_query(
         """ SELECT COUNT(*)
             FROM public.upload_file_log
-            WHERE status = 'pending'
+            WHERE status = 'uploading'
         """, conn).values[0][0]
 
     if count_pending_status != 0:
@@ -629,9 +657,11 @@ def model_retraining(background_tasks: BackgroundTasks):
         if file_id_list == table_copy[vitek].file_id:
             count_training += 1
         else:
-            retraining_id = add_retraining_log(vitek_id, table_copy[vitek].file_id)
-            background_tasks.add_task(training, vitek_id, table_copy[vitek], retraining_id)
-    
+            retraining_id = add_retraining_log(
+                vitek_id, table_copy[vitek].file_id)
+            background_tasks.add_task(
+                training, vitek_id, table_copy[vitek], retraining_id)
+
     if count_training >= 2:
         return {
             "status": "success",
@@ -651,7 +681,7 @@ def model_retraining(background_tasks: BackgroundTasks):
     }
 
 
-@app.get("/api/retraining_logs/")
+@app.get("/api/retraining_logs")
 def retraining_logs(page: int = 1):
     # show list
     AMOUNT_PER_PAGE = 10
@@ -679,7 +709,7 @@ def retraining_logs(page: int = 1):
         }
 
     query = sqlalchemy.text("""
-        SELECT log.id, log.start_date, log.finish_date, log.time, log.status, mg.version, vi.id AS vitek_id, vi.name AS vitek_name
+        SELECT log.id, log.start_date, log.finish_date, log.time, log.status, mg.version, vi.id AS vitek_id, vi.name AS vitek_name , log.cancel
         FROM public.retraining_log AS log 
         INNER JOIN public.vitek_id_card AS vi ON log.vitek_id = vi.id
         LEFT JOIN public.model_group AS mg ON mg.id = log.model_group_id
@@ -702,6 +732,7 @@ def retraining_logs(page: int = 1):
             "time": int(retraining_logs.loc[_id, "time"]) if pd.notna(retraining_logs.loc[_id, "time"]) else '-',
             "status": retraining_logs.loc[_id, "status"],
             "version": int(retraining_logs.loc[_id, "version"]) if pd.notna(retraining_logs.loc[_id, "version"]) else None,
+            "cancel" : bool(retraining_logs.loc[_id, "cancel"])
         })
 
     return {
@@ -716,7 +747,7 @@ def retraining_logs(page: int = 1):
 
 # ---------- DASHBOARD ----------
 
-@app.get("/api/lastest_version/")
+@app.get("/api/lastest_version")
 def lastest_version(vitek_id):
     query = sqlalchemy.text(
         """ SELECT MAX(version)
@@ -734,7 +765,7 @@ def lastest_version(vitek_id):
     }
 
 
-@app.get("/api/antimicrobial_model/")
+@app.get("/api/antimicrobial_model")
 def antimicrobial_model(vitek_id):
     query = sqlalchemy.text(
         """ SELECT public.antimicrobial_answer.id, public.antimicrobial_answer.name
@@ -762,7 +793,7 @@ def antimicrobial_model(vitek_id):
 # ---------- DATASET DASHBOARD ----------
 
 
-@app.get("/api/dashboard_case/")
+@app.get("/api/dashboard_case")
 def dashboard_case(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT to_char(public.report.report_issued_date, 'YYYY-MM'), COUNT(public.report.id)
@@ -787,7 +818,7 @@ def dashboard_case(vitek_id, version):
     }
 
 
-@app.get("/api/dashboard_species/")
+@app.get("/api/dashboard_species")
 def dashboard_species(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.species.name, COUNT(public.report.id)
@@ -813,7 +844,7 @@ def dashboard_species(vitek_id, version):
     }
 
 
-@app.get("/api/dashboard_bacteria_genus/")
+@app.get("/api/dashboard_bacteria_genus")
 def dashboard_bacteria_genus(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.bacteria_genus.name, COUNT(public.report.id)
@@ -839,7 +870,7 @@ def dashboard_bacteria_genus(vitek_id, version):
     }
 
 
-@app.get("/api/dashboard_submitted_sample/")
+@app.get("/api/dashboard_submitted_sample")
 def dashboard_submitted_sample(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.submitted_sample.name, COUNT(public.report.id)
@@ -865,7 +896,7 @@ def dashboard_submitted_sample(vitek_id, version):
     }
 
 
-@app.get("/api/dashboard_antimicrobial_sir/")
+@app.get("/api/dashboard_antimicrobial_sir")
 def dashboard_antimicrobial_answer(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.antimicrobial_sir.name,
@@ -904,7 +935,7 @@ def dashboard_antimicrobial_answer(vitek_id, version):
     }
 
 
-@app.get("/api/dashboard_antimicrobial_answer/")
+@app.get("/api/dashboard_antimicrobial_answer")
 def dashboard_antimicrobial_answer(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.antimicrobial_answer.name, COUNT(public.report.id)
@@ -933,7 +964,7 @@ def dashboard_antimicrobial_answer(vitek_id, version):
 # ---------- PERFORMANCE DASHBOARD ----------
 
 
-@app.get("/api/dashboard_performance_by_antimicrobial/")
+@app.get("/api/dashboard_performance_by_antimicrobial")
 def dashboard_performance_by_antimicrobial(antimicrobial_id):
     query = sqlalchemy.text(
         """ SELECT mg.version, m.accuracy, m.precision, m.recall, m.f1
@@ -959,7 +990,7 @@ def dashboard_performance_by_antimicrobial(antimicrobial_id):
     }
 
 
-@app.get("/api/dashboard_performance_by_version/")
+@app.get("/api/dashboard_performance_by_version")
 def dashboard_performance_by_version(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.antimicrobial_answer.name, m_group.version, m.accuracy, m.precision, m.recall, m.f1, m.performance, m_group.model_group_id
@@ -1068,12 +1099,13 @@ def delete_file_db(file_id: int):
 
 @app.delete("/api/delete_file")
 def delete_file(file_id: int, background_tasks: BackgroundTasks):
-    retraining_status = pd.read_sql_query("SELECT DISTINCT status FROM public.retraining_log",conn).values
-    if "pending" in retraining_status or "training" in retraining_status  :
+    retraining_status = pd.read_sql_query(
+        "SELECT DISTINCT status FROM public.retraining_log", conn).values
+    if "pending" in retraining_status or "training" in retraining_status:
         return {
             "status": "fail",
-            "data" : {
-                "message" : "ขณะนี้ระบบกำลังเทรนโมเดลอยู่ หากต้องการลบไฟล์ โปรดรอหรือยกเลิกการเทรนโมเดล"
+            "data": {
+                "message": "ขณะนี้ระบบกำลังเทรนโมเดลอยู่ หากต้องการลบไฟล์ โปรดรอหรือยกเลิกการเทรนโมเดล"
             }
         }
 
@@ -1088,7 +1120,7 @@ def delete_file(file_id: int, background_tasks: BackgroundTasks):
     # DELETE FILE SET STATUS
     with conn.connect() as con:
         query = sqlalchemy.text(
-            "UPDATE public.file SET active=False WHERE id = :id RETURNING vitek_id;")
+            "UPDATE public.file SET active = false WHERE id = :id RETURNING vitek_id;")
         rs = con.execute(query, id=file_id)
         for row in rs:
             vitek_id = row[0]
@@ -1098,6 +1130,34 @@ def delete_file(file_id: int, background_tasks: BackgroundTasks):
     # DELETE FILE IN DATABASE
     if file_id not in files_used['file_id'].values:
         background_tasks.add_task(delete_file_db, file_id=file_id)
+
+    return {
+        "status": "success",
+    }
+
+# ---------- CANCEL RETRAINING ----------
+
+
+@app.get("/api/cancel_retraining")
+def cancel_retraining(retraining_id: int):
+    retrains = pd.read_sql_query("""
+    SELECT id , cancel 
+    FROM public.retraining_log 
+    WHERE status = 'pending' OR status = 'training' 
+    """, conn)
+
+    # retrain_id not found.
+    if retraining_id not in retrains["id"].values:
+        return {
+            "status": "fail",
+        }
+
+    retrains = retrains.set_index("id")
+    if not retrains.loc[retraining_id, "cancel"]:
+        with conn.connect() as con:
+            query = sqlalchemy.text(
+                "UPDATE public.retraining_log SET cancel = true WHERE id = :id;")
+            con.execute(query, id=retraining_id)
 
     return {
         "status": "success",
