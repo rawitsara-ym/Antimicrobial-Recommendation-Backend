@@ -61,7 +61,7 @@ class UploadValidator:
 
     def validate_column_value(self, df: pd.DataFrame):
         check_columns_blank = ["hn", "date_of_submission",
-                               "species", "bacteria_genus", "report_issued_date", "vitek_id"]
+                               "species", "bacteria_genus", "report_issued_date", "vitek_id", "submitted_sample"]
 
         check_startwith_blank = ["ans_"]
 
