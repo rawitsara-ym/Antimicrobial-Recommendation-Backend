@@ -41,7 +41,7 @@ class TableToCsv:
         table['report_issued_date'] = pd.to_datetime(
             table['report_issued_date']).dt.normalize()
         self.file_id = list(set(table['file_id']))
-        table.drop(columns=['file_id'], inplace=True)
+        # table.drop(columns=['file_id'], inplace=True)
         return table
 
     def query_answer_table(self):

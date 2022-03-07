@@ -40,9 +40,9 @@ class ModelRetraining:
     def training(self, retraining_id: int):
         vitek = ["GN", "GP"][self.vitek_id - 1]
         last_ver = self.lastest_version()
-
-        # Get last model
-        last_model = self.get_model(last_ver)
+        
+        # Get current model
+        current_model = self.get_model(0)
 
         # Create model directory
         dir_path = f"./ml_model/{vitek}/version_{last_ver+1}"
@@ -54,6 +54,10 @@ class ModelRetraining:
             self.db.table, "submitted_sample", 10)
         submitted_sample_binning = list(
             self.db.table["submitted_sample"].unique())
+        
+        # Replace empty string with null & drop null columns
+        self.db.table.replace(r'^\s*$', np.NaN, regex=True, inplace=True)
+        self.db.table = self.db.table[self.db.table['file_id'].isin(self.db.file_id)].dropna(axis=1, how='all')
 
         rows_insert = []
 
@@ -90,10 +94,10 @@ class ModelRetraining:
             model_path = dir_path + f"/{anti_name.replace('/','_')}.joblib"
             joblib.dump(model, model_path)
 
-            # Compare new model with last model
-            compare_result = self.compare_model_by_f1(X_test, y_test, last_model.loc[anti_id]["model_path"],
-                                                      eval(last_model.loc[anti_id]["schema"]), f1_new=measure["f1"])
-
+            # Compare new model with current model           
+            compare_result = self.compare_model_by_f1(X_test, y_test, current_model.loc[anti_id]["model_path"],
+                                                      eval(current_model.loc[anti_id]["schema"]), f1_new=measure["f1"])
+            
             # Data for insert
             row = {
                 "antimicrobial_id": anti_id,
