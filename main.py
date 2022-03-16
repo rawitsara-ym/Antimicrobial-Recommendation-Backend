@@ -406,7 +406,7 @@ def view_filename(model_group_id: int):
         SELECT f.id , f.name , f.upload_at , f.amount_row
         FROM public.file AS f
         INNER JOIN public.model_group_file AS mgf ON f.id = mgf.file_id
-        WHERE active AND mgf.model_group_id = :mg_id
+        WHERE mgf.model_group_id = :mg_id
         ORDER BY upload_at DESC
         """)
 
