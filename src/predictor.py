@@ -2,8 +2,6 @@ import pandas as pd
 import joblib
 from sqlalchemy.engine import Engine
 import sqlalchemy
-from IPython.display import display
-
 
 class Predictior:
     GN = 0
