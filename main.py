@@ -24,11 +24,12 @@ load_dotenv(dotenv_path)
 DB_HOST = os.environ.get("DB_HOST")
 DB_USERNAME = os.environ.get("DB_USERNAME")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
+DB_FRONTEND = os.environ.get("DB_FRONTEND")
 
 app = FastAPI()
 
 origins = [
-    "http://localhost:8080",
+    DB_FRONTEND,
 ]
 
 app.add_middleware(
