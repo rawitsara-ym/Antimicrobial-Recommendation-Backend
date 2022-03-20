@@ -7,8 +7,9 @@ class Predictior:
     GN = 0
     GP = 1
 
-    def __init__(self, conn: Engine) -> None:
+    def __init__(self, conn: Engine,model_location) -> None:
         self.conn = conn
+        self.model_location = model_location
         self.startup()
 
     def startup(self):
@@ -37,8 +38,8 @@ class Predictior:
         self.submitted_sample_binning = [{row[0]: eval(row[1]) for row in database[self.GN][["name", "submitted_sample_binning"]].values},
                                          {row[0]: eval(row[1]) for row in database[self.GP][["name", "submitted_sample_binning"]].values}]
 
-        self.models = [{row[0]: joblib.load(row[1]) for row in database[self.GN][["name", "model_path"]].values},
-                       {row[0]: joblib.load(row[1]) for row in database[self.GP][["name", "model_path"]].values}]
+        self.models = [{row[0]: joblib.load(f'{self.model_location}/{row[1]}') for row in database[self.GN][["name", "model_path"]].values},
+                       {row[0]: joblib.load(f'{self.model_location}/{row[1]}') for row in database[self.GP][["name", "model_path"]].values}]
 
         schema_all = [set(), set()]
 
