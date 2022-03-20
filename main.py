@@ -24,13 +24,12 @@ load_dotenv(dotenv_path)
 DB_HOST = os.environ.get("DB_HOST")
 DB_USERNAME = os.environ.get("DB_USERNAME")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
-DB_FRONTEND = os.environ.get("DB_FRONTEND")
+ORIGINS = os.environ.get("ORIGINS")
+MODEL_PATH = os.environ.get("MODEL_PATH")
 
 app = FastAPI()
 
-origins = [
-    DB_FRONTEND,
-]
+origins = ORIGINS.split(',') if type(ORIGINS) == str else []
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,8 +42,7 @@ app.add_middleware(
 conn = sqlalchemy.create_engine(
     f"postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}/antimicrobial_system")
 
-predictor = Predictior(conn)
-
+predictor = Predictior(conn,MODEL_PATH)
 
 table_csv = {'GN': TableToCsv(conn, 1), 'GP': TableToCsv(conn, 2)}
 
