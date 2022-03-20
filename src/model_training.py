@@ -32,32 +32,34 @@ class SMOTERounding:
 
 
 class ModelRetraining:
-    def __init__(self, db, vitek_id: int, conn: Engine) -> None:
+    def __init__(self, db, vitek_id: int, conn: Engine, model_location) -> None:
         self.db = db
         self.vitek_id = vitek_id
         self.conn = conn
+        self.model_location = model_location
 
     def training(self, retraining_id: int):
         vitek = ["GN", "GP"][self.vitek_id - 1]
         last_ver = self.lastest_version()
-        
+
         # Get current model
         current_model = self.get_model(0)
 
         # Create model directory
         dir_path = f"./ml_model/{vitek}/version_{last_ver+1}"
-        if not os.path.exists(dir_path):
-            os.makedirs(dir_path)
+        if not os.path.exists(f'{self.model_location}/{dir_path}'):
+            os.makedirs(f'{self.model_location}/{dir_path}')
 
         # Binning submitted sample
         self.db.table = self.binning_less_than(
             self.db.table, "submitted_sample", 10)
         submitted_sample_binning = list(
             self.db.table["submitted_sample"].unique())
-        
+
         # Replace empty string with null & drop null columns
         self.db.table.replace(r'^\s*$', np.NaN, regex=True, inplace=True)
-        self.db.table = self.db.table[self.db.table['file_id'].isin(self.db.file_id)].dropna(axis=1, how='all')
+        self.db.table = self.db.table[self.db.table['file_id'].isin(
+            self.db.file_id)].dropna(axis=1, how='all')
 
         rows_insert = []
 
@@ -92,12 +94,12 @@ class ModelRetraining:
 
             # Dump model
             model_path = dir_path + f"/{anti_name.replace('/','_')}.joblib"
-            joblib.dump(model, model_path)
+            joblib.dump(model, f'{self.model_location}/{model_path}')
 
-            # Compare new model with current model           
+            # Compare new model with current model
             compare_result = self.compare_model_by_f1(X_test, y_test, current_model.loc[anti_id]["model_path"],
                                                       eval(current_model.loc[anti_id]["schema"]), f1_new=measure["f1"])
-            
+
             # Data for insert
             row = {
                 "antimicrobial_id": anti_id,
@@ -179,7 +181,7 @@ class ModelRetraining:
         y_bycase = test_bycase[list(
             test_bycase.columns[test_bycase.columns.isin(anti_ans)])]  # answer
 
-        models = [["ans_" + row[0], joblib.load(row[1]), eval(row[2])]
+        models = [["ans_" + row[0], joblib.load(f"{self.model_location}/{row[1]}"), eval(row[2])]
                   for row in self.get_model(version).values]  # load model
         df_predict = pd.DataFrame()
 
@@ -230,7 +232,7 @@ class ModelRetraining:
         X_test_dummies = self.get_dummies_dataframe_columns(
             df_schema, pd.get_dummies(X_test))
         f1_old = self.evaluation(
-            X_test_dummies, y_test, joblib.load(model_path_old))["f1"]
+            X_test_dummies, y_test, joblib.load(f'{self.model_location}/{model_path_old}'))["f1"]
         if f1_new > f1_old:
             performance = "better"
         elif f1_new < f1_old:
