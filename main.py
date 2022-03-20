@@ -42,7 +42,7 @@ app.add_middleware(
 conn = sqlalchemy.create_engine(
     f"postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}/antimicrobial_system")
 
-predictor = Predictior(conn,MODEL_PATH)
+predictor = Predictior(conn, MODEL_PATH)
 
 table_csv = {'GN': TableToCsv(conn, 1), 'GP': TableToCsv(conn, 2)}
 
@@ -539,7 +539,8 @@ def training(vitek_id: int, table_report: pd.DataFrame, retraining_id: int):
         con.execute(query, start_date=start_date, id=retraining_id)
 
     # Retraining
-    model_retraining = ModelRetraining(table_report, vitek_id, conn)
+    model_retraining = ModelRetraining(
+        table_report, vitek_id, conn, MODEL_PATH)
     model_group_id = model_retraining.training(retraining_id)
 
     # cancel after training
@@ -553,7 +554,8 @@ def training(vitek_id: int, table_report: pd.DataFrame, retraining_id: int):
                 SET status='cancel' , finish_date=:finish_date, time=:time, cancel=true
                 WHERE id = :id
                 """)
-            con.execute(query, finish_date=finish_date, time=delta_time, id=retraining_id)
+            con.execute(query, finish_date=finish_date,
+                        time=delta_time, id=retraining_id)
         return
 
     # finish training
@@ -731,7 +733,7 @@ def retraining_logs(page: int = 1):
             "time": int(retraining_logs.loc[_id, "time"]) if pd.notna(retraining_logs.loc[_id, "time"]) else '-',
             "status": retraining_logs.loc[_id, "status"],
             "version": int(retraining_logs.loc[_id, "version"]) if pd.notna(retraining_logs.loc[_id, "version"]) else None,
-            "cancel" : bool(retraining_logs.loc[_id, "cancel"])
+            "cancel": bool(retraining_logs.loc[_id, "cancel"])
         })
 
     return {
