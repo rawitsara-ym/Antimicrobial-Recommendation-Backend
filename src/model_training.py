@@ -46,7 +46,7 @@ class ModelRetraining:
         current_model = self.get_model(0)
 
         # Create model directory
-        dir_path = f"/ml_model/{vitek}/version_{last_ver+1}"
+        dir_path = f"./ml_model/{vitek}/version_{last_ver+1}"
         if not os.path.exists(f'{self.model_location}/{dir_path}'):
             os.makedirs(f'{self.model_location}/{dir_path}')
 
