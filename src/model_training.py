@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import sqlalchemy
 from sqlalchemy.engine import Engine
-from sympy import per
 from xgboost import XGBClassifier
 from imblearn.over_sampling import SMOTE, ADASYN, BorderlineSMOTE, SVMSMOTE
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
