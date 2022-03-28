@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import sqlalchemy
 from sqlalchemy.engine import Engine
+from sympy import per
 from xgboost import XGBClassifier
 from imblearn.over_sampling import SMOTE, ADASYN, BorderlineSMOTE, SVMSMOTE
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
@@ -62,6 +63,7 @@ class ModelRetraining:
             self.db.file_id)].dropna(axis=1, how='all')
 
         rows_insert = []
+        current_evaluation = pd.DataFrame(columns=["anti_id", "model_id"])
 
         # Training
         for anti_id, anti_name in self.get_antimicrobial_ans().items():
@@ -96,10 +98,12 @@ class ModelRetraining:
             model_path = dir_path + f"/{anti_name.replace('/','_')}.joblib"
             joblib.dump(model, f'{self.model_location}/{model_path}')
 
-            # Compare new model with current model
-            compare_result = self.compare_model_by_f1(X_test, y_test, current_model.loc[anti_id]["model_path"],
-                                                      eval(current_model.loc[anti_id]["schema"]), f1_new=measure["f1"])
-
+            # Compare new model with current model and evaluate new current
+            compare_result, eval_current_new = self.evaluate_compare_model(X_test, y_test, current_model.loc[anti_id],
+                                                      eval(current_model.loc[anti_id]["schema"]), eval_new=measure)
+            eval_current_new["anti_id"] = anti_id
+            current_evaluation = current_evaluation.append(eval_current_new, ignore_index=True)
+            
             # Data for insert
             row = {
                 "antimicrobial_id": anti_id,
@@ -144,7 +148,7 @@ class ModelRetraining:
             return -1
 
         # UPDATE model current version
-        self.update_model_current_version()
+        self.update_model_current_version(current_evaluation.set_index('anti_id'))
 
         return model_group_id
 
@@ -227,19 +231,23 @@ class ModelRetraining:
             "f1": f1_sum/row
         }
 
-    def compare_model_by_f1(self, X_test, y_test, model_path_old: str, schema_old: list, f1_new: float):
+    def evaluate_compare_model(self, X_test, y_test, model_old: str, schema_old: list, eval_new: float):
         df_schema = pd.DataFrame(columns=schema_old)
         X_test_dummies = self.get_dummies_dataframe_columns(
             df_schema, pd.get_dummies(X_test))
-        f1_old = self.evaluation(
-            X_test_dummies, y_test, joblib.load(f'{self.model_location}/{model_path_old}'))["f1"]
-        if f1_new > f1_old:
+        eval_current = self.evaluation(
+            X_test_dummies, y_test, joblib.load(f'{self.model_location}/{model_old["model_path"]}'))
+        if eval_new["f1"] > eval_current["f1"]:
             performance = "better"
-        elif f1_new < f1_old:
+            eval_current_new = eval_new
+        elif eval_new["f1"] < eval_current["f1"]:
             performance = "worse"
+            eval_current_new = eval_current
+            eval_current_new["model_id"] = model_old["model_id"]
         else:
             performance = "same"
-        return performance
+            eval_current_new = eval_new
+        return performance, eval_current_new
 
     def insert_into_db(self, rows: list, submitted_sample_binning: list, version: int):
         # INSERT model
@@ -304,12 +312,13 @@ class ModelRetraining:
 
         return model_group_id
 
-    def update_model_current_version(self):
+    def update_model_current_version(self, current_evaluation):
         current_model_group_id = self.get_current_model_group_id(version=0)
         performance_model = self.get_performance_model(
             version=self.lastest_version())
         for perf in performance_model:
-            if perf["performance"] == "better":
+            if perf["performance"] == "better" or perf["performance"] == "same":
+                current_evaluation.loc[int(perf["anti_id"]), "model_id"] = perf["model_id"]
                 mgm_id = self.get_model_group_model_id(
                     mg_id=current_model_group_id, anti_id=perf["anti_id"])
                 with self.conn.connect() as con:
@@ -321,6 +330,37 @@ class ModelRetraining:
                         """)
                     rs = con.execute(
                         query, model_id=perf["model_id"], id=mgm_id)
+        
+        # INSERT model_current
+        query_current_ver = sqlalchemy.text(
+                """
+                SELECT MAX(model_current.version) 
+                FROM public.model_current AS model_current
+                INNER JOIN public.model AS model ON model.id = model_current.model_id
+                INNER JOIN public.antimicrobial_answer AS anti_answer ON anti_answer.id = model.antimicrobial_id
+                INNER JOIN public.vitek_id_card AS vitek_id_card ON vitek_id_card.id = anti_answer.vitek_id
+                WHERE vitek_id_card.id = :vitek_id
+                """)
+        current_ver = int(pd.read_sql_query(query_current_ver, self.conn, params={"vitek_id": self.vitek_id}).values[0][0])      
+        current_evaluation["version"] = [current_ver+1]*len(current_evaluation)
+        current_evaluation.to_sql('model_current', schema='public',
+                            con=self.conn, if_exists='append', index=False)
+        
+        # Test By Case
+        test_by_case_measure = self.test_by_case(0)
+        
+        # UPDATE model_group
+        with self.conn.connect() as con:
+            query = sqlalchemy.text(
+                """
+                UPDATE public.model_group
+                SET accuracy=:accuracy, precision=:precision, recall=:recall, f1=:f1
+                WHERE vitek_id = :vitek_id AND version = 0
+                """)
+            con.execute(query, accuracy=test_by_case_measure["accuracy"],
+                        precision=test_by_case_measure["precision"],
+                        recall=test_by_case_measure["recall"],
+                        f1=test_by_case_measure["f1"], vitek_id=self.vitek_id)
 
     def remove_model_group(self, model_group_id):
         # DELETE model
@@ -406,7 +446,7 @@ class ModelRetraining:
         return df_test
 
     def get_model(self, version: int):
-        query_model = sqlalchemy.text("""SELECT ans.id, ans.name, model_path, schema
+        query_model = sqlalchemy.text("""SELECT ans.id, ans.name, model_path, schema, m.id as model_id
             FROM public.model_group as mg
             INNER JOIN public.model_group_model as mgm ON mgm.model_group_id = mg.id
             INNER JOIN public.model as m ON m.id = mgm.model_id

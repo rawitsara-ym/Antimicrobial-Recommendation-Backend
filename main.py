@@ -1008,6 +1008,28 @@ def dashboard_performance_by_version(vitek_id, version):
             WHERE mg.vitek_id = :vitek_id AND mg.version = :version
             ORDER BY public.antimicrobial_answer.name
         """)
+    
+    query_current = sqlalchemy.text(
+        """ SELECT 
+            anti_answer.name, m_group.version, model_current.accuracy , model_current.precision , model_current.recall , model_current.f1, '-' as performance, m_group.model_group_id
+            FROM public.model_current AS model_current
+            INNER JOIN public.model AS model ON model.id = model_current.model_id
+            INNER JOIN public.antimicrobial_answer AS anti_answer ON anti_answer.id = model.antimicrobial_id
+            INNER JOIN public.vitek_id_card AS vitek_id_card ON vitek_id_card.id = anti_answer.vitek_id
+            INNER JOIN (
+                        	SELECT *
+                        	FROM public.model_group_model
+                        	INNER JOIN public.model_group ON public.model_group_model.model_group_id = public.model_group.id
+                         	WHERE public.model_group.version > 0
+                        	) as m_group ON model.id = m_group.model_id
+            WHERE vitek_id_card.id = :vitek_id AND model_current.version = (SELECT MAX(model_current.version) 
+            													   	FROM public.model_current AS model_current
+            														INNER JOIN public.model AS model ON model.id = model_current.model_id
+            														INNER JOIN public.antimicrobial_answer AS anti_answer ON anti_answer.id = model.antimicrobial_id
+            														INNER JOIN public.vitek_id_card AS vitek_id_card ON vitek_id_card.id = anti_answer.vitek_id
+            													   	WHERE vitek_id_card.id = :vitek_id)
+            ORDER BY model_current.id ASC
+        """)
 
     query_test_by_case = sqlalchemy.text(
         """ SELECT 'All Model (Test By Case)' as name, mg.version, mg.accuracy, mg.precision, mg.recall, mg.f1, '-' as performance, mg.id as model_group_id
@@ -1017,7 +1039,10 @@ def dashboard_performance_by_version(vitek_id, version):
     )
 
     params = {"vitek_id": vitek_id, "version": version}
-    performance = pd.read_sql_query(query, conn, params=params)
+    if int(version) == 0:
+        performance = pd.read_sql_query(query_current, conn, params={"vitek_id": vitek_id})
+    else:    
+        performance = pd.read_sql_query(query, conn, params=params)
     test_by_case = pd.read_sql_query(query_test_by_case, conn, params=params)
     performance = performance.append(test_by_case)
 
