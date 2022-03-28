@@ -210,12 +210,39 @@ def predict(petDetail: PetDetail):
             "message": "vitek_id must have GN or GP only."
         }
 
-# ---------- UPLOAD  ----------
 
+# ---------- UPLOAD  ----------
 
 def uploading(vitek_id: int, uploadfile: dict):
     # uploadfile = {"id": id_upload, "filename": in_file.filename,
-    #               "filepath": filepath, "start_date": upload_date}
+    #               "filepath": filepath}
+    def first_queue():
+        with conn.connect() as con:
+            query = sqlalchemy.text(
+                """
+            SELECT MIN(id)
+            FROM public.upload_file_log 
+            WHERE vitek_id = :v_id AND (status = 'pending' OR status = 'uploading')
+            """)
+            rs = con.execute(
+                query, id=uploadfile["id"], v_id=vitek_id)
+            for row in rs:
+                file_id = row[0]
+        return file_id
+
+    while uploadfile['id'] != first_queue():
+        time.sleep(30)
+
+    uploadfile["start_date"] = datetime.datetime.now()
+    with conn.connect() as con:
+        query = sqlalchemy.text(
+            """
+            UPDATE public.upload_file_log
+            SET start_date=:s_date, status='uploading'
+            WHERE id = :id""")
+        con.execute(query, id=uploadfile["id"],
+                    s_date=uploadfile['start_date'])
+
     def upload_result_func(detail: list, type: str, log_id: int):
         res = pd.DataFrame(detail, columns=["detail"])
         res["type"] = type
@@ -298,13 +325,12 @@ def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile
         shutil.copyfileobj(in_file.file, out_file)
     with conn.connect() as con:
         query = sqlalchemy.text(
-            "INSERT INTO public.upload_file_log(filename, start_date,status , vitek_id) VALUES (:filename, :date, 'uploading' , :vitek_id) RETURNING id;")
-        rs = con.execute(query, filename=in_file.filename,
-                         date=upload_date, vitek_id=vitek_id)
+            "INSERT INTO public.upload_file_log(filename,status , vitek_id) VALUES (:filename, 'pending' , :vitek_id) RETURNING id;")
+        rs = con.execute(query, filename=in_file.filename, vitek_id=vitek_id)
         for row in rs:
             id_upload = row[0]
     uploadfile = {"id": id_upload, "filename": in_file.filename,
-                  "filepath": filepath, "start_date": upload_date}
+                  "filepath": filepath}
     background_tasks.add_task(
         uploading, vitek_id, uploadfile)
     return {
@@ -312,7 +338,6 @@ def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile
         "data":
         {
             "filename": in_file.filename,
-            "start_date": upload_date,
         }
     }
 
@@ -348,7 +373,7 @@ def upload_logs(page: int = 1):
         SELECT up.id , up.filename , up.start_date , up.finish_date , up.time , up.amount_row ,up.status , vi.name AS vitek_id
         FROM public.upload_file_log AS up
         INNER JOIN public.vitek_id_card AS vi ON up.vitek_id = vi.id
-        ORDER BY finish_date DESC
+        ORDER BY finish_date DESC , start_date
         LIMIT :app
         OFFSET :offset
         """)
@@ -378,7 +403,7 @@ def upload_logs(page: int = 1):
         logs.append({
             "id": int(_id),
             "filename": upload_file_logs.loc[_id, "filename"],
-            "start_date": upload_file_logs.loc[_id, "start_date"].strftime("%d-%b-%Y %H:%M:%S"),
+            "start_date": upload_file_logs.loc[_id, "start_date"].strftime("%d-%b-%Y %H:%M:%S") if pd.notna(upload_file_logs.loc[_id, "start_date"]) else '-',
             "finish_date": upload_file_logs.loc[_id, "finish_date"].strftime("%d-%b-%Y %H:%M:%S") if pd.notna(upload_file_logs.loc[_id, "finish_date"]) else '-',
             "time": int(upload_file_logs.loc[_id, "time"]) if pd.notna(upload_file_logs.loc[_id, "time"]) else '-',
             "amount_row": int(upload_file_logs.loc[_id, "amount_row"]) if pd.notna(upload_file_logs.loc[_id, "amount_row"]) else '-',
