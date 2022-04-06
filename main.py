@@ -210,12 +210,39 @@ def predict(petDetail: PetDetail):
             "message": "vitek_id must have GN or GP only."
         }
 
-# ---------- UPLOAD  ----------
 
+# ---------- UPLOAD  ----------
 
 def uploading(vitek_id: int, uploadfile: dict):
     # uploadfile = {"id": id_upload, "filename": in_file.filename,
-    #               "filepath": filepath, "start_date": upload_date}
+    #               "filepath": filepath}
+    def first_queue():
+        with conn.connect() as con:
+            query = sqlalchemy.text(
+                """
+            SELECT MIN(id)
+            FROM public.upload_file_log 
+            WHERE vitek_id = :v_id AND (status = 'pending' OR status = 'uploading')
+            """)
+            rs = con.execute(
+                query, id=uploadfile["id"], v_id=vitek_id)
+            for row in rs:
+                file_id = row[0]
+        return file_id
+
+    while uploadfile['id'] != first_queue():
+        time.sleep(30)
+
+    uploadfile["start_date"] = datetime.datetime.now()
+    with conn.connect() as con:
+        query = sqlalchemy.text(
+            """
+            UPDATE public.upload_file_log
+            SET start_date=:s_date, status='uploading'
+            WHERE id = :id""")
+        con.execute(query, id=uploadfile["id"],
+                    s_date=uploadfile['start_date'])
+
     def upload_result_func(detail: list, type: str, log_id: int):
         res = pd.DataFrame(detail, columns=["detail"])
         res["type"] = type
@@ -298,13 +325,12 @@ def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile
         shutil.copyfileobj(in_file.file, out_file)
     with conn.connect() as con:
         query = sqlalchemy.text(
-            "INSERT INTO public.upload_file_log(filename, start_date,status , vitek_id) VALUES (:filename, :date, 'uploading' , :vitek_id) RETURNING id;")
-        rs = con.execute(query, filename=in_file.filename,
-                         date=upload_date, vitek_id=vitek_id)
+            "INSERT INTO public.upload_file_log(filename,status , vitek_id) VALUES (:filename, 'pending' , :vitek_id) RETURNING id;")
+        rs = con.execute(query, filename=in_file.filename, vitek_id=vitek_id)
         for row in rs:
             id_upload = row[0]
     uploadfile = {"id": id_upload, "filename": in_file.filename,
-                  "filepath": filepath, "start_date": upload_date}
+                  "filepath": filepath}
     background_tasks.add_task(
         uploading, vitek_id, uploadfile)
     return {
@@ -312,7 +338,6 @@ def upload(vitek_id: int, background_tasks: BackgroundTasks, in_file: UploadFile
         "data":
         {
             "filename": in_file.filename,
-            "start_date": upload_date,
         }
     }
 
@@ -348,7 +373,7 @@ def upload_logs(page: int = 1):
         SELECT up.id , up.filename , up.start_date , up.finish_date , up.time , up.amount_row ,up.status , vi.name AS vitek_id
         FROM public.upload_file_log AS up
         INNER JOIN public.vitek_id_card AS vi ON up.vitek_id = vi.id
-        ORDER BY finish_date DESC
+        ORDER BY finish_date DESC , start_date
         LIMIT :app
         OFFSET :offset
         """)
@@ -378,7 +403,7 @@ def upload_logs(page: int = 1):
         logs.append({
             "id": int(_id),
             "filename": upload_file_logs.loc[_id, "filename"],
-            "start_date": upload_file_logs.loc[_id, "start_date"].strftime("%d-%b-%Y %H:%M:%S"),
+            "start_date": upload_file_logs.loc[_id, "start_date"].strftime("%d-%b-%Y %H:%M:%S") if pd.notna(upload_file_logs.loc[_id, "start_date"]) else '-',
             "finish_date": upload_file_logs.loc[_id, "finish_date"].strftime("%d-%b-%Y %H:%M:%S") if pd.notna(upload_file_logs.loc[_id, "finish_date"]) else '-',
             "time": int(upload_file_logs.loc[_id, "time"]) if pd.notna(upload_file_logs.loc[_id, "time"]) else '-',
             "amount_row": int(upload_file_logs.loc[_id, "amount_row"]) if pd.notna(upload_file_logs.loc[_id, "amount_row"]) else '-',
@@ -521,7 +546,7 @@ def training(vitek_id: int, table_report: pd.DataFrame, retraining_id: int):
             query = sqlalchemy.text(
                 """
                 UPDATE public.retraining_log
-                SET start_date=:date, status='cancel' , finish_date=:date, time=0, cancel=true
+                SET start_date=:date, status='cancel' , finish_date=:date, time=0
                 WHERE id = :id
                 """)
             con.execute(query, date=date, id=retraining_id)
@@ -551,7 +576,7 @@ def training(vitek_id: int, table_report: pd.DataFrame, retraining_id: int):
             query = sqlalchemy.text(
                 """
                 UPDATE public.retraining_log
-                SET status='cancel' , finish_date=:finish_date, time=:time, cancel=true
+                SET status='cancel' , finish_date=:finish_date, time=:time
                 WHERE id = :id
                 """)
             con.execute(query, finish_date=finish_date,
@@ -580,7 +605,7 @@ def add_retraining_log(vitek_id: int, file_id_list: list):
     with conn.connect() as con:
         query = sqlalchemy.text(
             """INSERT INTO public.retraining_log(vitek_id, status , cancel)
-            VALUES (:vitek_id, 'pending' , false)
+            VALUES (:vitek_id, 'pending' , true)
             RETURNING id;
             """)
         rs = con.execute(query, vitek_id=vitek_id)
@@ -645,7 +670,7 @@ def model_retraining(background_tasks: BackgroundTasks):
 				                                WHERE vitek_id = :v_id)
         """)
     count_training = 0
-    table_copy = copy.copy(table_csv)
+    table_copy = {"GN": copy.copy(table_csv["GN"]), "GP": copy.copy(table_csv["GP"])}
     for vitek_id in [1, 2]:
         vitek = ["GN", "GP"][vitek_id - 1]
         file_id_list = list(pd.read_sql_query(file_query, conn, params={
@@ -1009,6 +1034,28 @@ def dashboard_performance_by_version(vitek_id, version):
             ORDER BY public.antimicrobial_answer.name
         """)
 
+    query_current = sqlalchemy.text(
+        """ SELECT 
+            anti_answer.name, m_group.version, model_current.accuracy , model_current.precision , model_current.recall , model_current.f1, '-' as performance, m_group.model_group_id
+            FROM public.model_current AS model_current
+            INNER JOIN public.model AS model ON model.id = model_current.model_id
+            INNER JOIN public.antimicrobial_answer AS anti_answer ON anti_answer.id = model.antimicrobial_id
+            INNER JOIN public.vitek_id_card AS vitek_id_card ON vitek_id_card.id = anti_answer.vitek_id
+            INNER JOIN (
+                        	SELECT *
+                        	FROM public.model_group_model
+                        	INNER JOIN public.model_group ON public.model_group_model.model_group_id = public.model_group.id
+                         	WHERE public.model_group.version > 0
+                        	) as m_group ON model.id = m_group.model_id
+            WHERE vitek_id_card.id = :vitek_id AND model_current.version = (SELECT MAX(model_current.version) 
+            													   	FROM public.model_current AS model_current
+            														INNER JOIN public.model AS model ON model.id = model_current.model_id
+            														INNER JOIN public.antimicrobial_answer AS anti_answer ON anti_answer.id = model.antimicrobial_id
+            														INNER JOIN public.vitek_id_card AS vitek_id_card ON vitek_id_card.id = anti_answer.vitek_id
+            													   	WHERE vitek_id_card.id = :vitek_id)
+            ORDER BY model_current.id ASC
+        """)
+
     query_test_by_case = sqlalchemy.text(
         """ SELECT 'All Model (Test By Case)' as name, mg.version, mg.accuracy, mg.precision, mg.recall, mg.f1, '-' as performance, mg.id as model_group_id
             FROM public.model_group as mg
@@ -1017,7 +1064,11 @@ def dashboard_performance_by_version(vitek_id, version):
     )
 
     params = {"vitek_id": vitek_id, "version": version}
-    performance = pd.read_sql_query(query, conn, params=params)
+    if int(version) == 0:
+        performance = pd.read_sql_query(
+            query_current, conn, params={"vitek_id": vitek_id})
+    else:
+        performance = pd.read_sql_query(query, conn, params=params)
     test_by_case = pd.read_sql_query(query_test_by_case, conn, params=params)
     performance = performance.append(test_by_case)
 
@@ -1154,12 +1205,16 @@ def cancel_retraining(retraining_id: int):
         }
 
     retrains = retrains.set_index("id")
-    if not retrains.loc[retraining_id, "cancel"]:
+    if retrains.loc[retraining_id, "cancel"]:
         with conn.connect() as con:
             query = sqlalchemy.text(
-                "UPDATE public.retraining_log SET cancel = true WHERE id = :id;")
+                "UPDATE public.retraining_log SET status = 'canceling' , cancel = false WHERE id = :id;")
             con.execute(query, id=retraining_id)
-
-    return {
-        "status": "success",
-    }
+        return {
+            "status": "success",
+        }
+    else:
+        return {
+            "status": "fail",
+            "message" : "ตอนนี้ไม่สามารถยกเลิกการเทรนโมเดลได้"
+        }
