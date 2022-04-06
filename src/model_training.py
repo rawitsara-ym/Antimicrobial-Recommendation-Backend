@@ -145,7 +145,17 @@ class ModelRetraining:
         if check_retraining_status(retraining_id, self.conn):
             self.remove_model_group(model_group_id)
             return -1
-
+        else :
+            # not be able to cancel
+            with self.conn.connect() as con:
+                query = sqlalchemy.text(
+                    """
+                    UPDATE public.retraining_log
+                    SET cancel = false
+                    WHERE id = :id
+                    """)
+                con.execute(query, id=retraining_id)
+        
         # UPDATE model current version
         self.update_model_current_version(current_evaluation.set_index('anti_id'))
 

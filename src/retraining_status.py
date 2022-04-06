@@ -6,7 +6,7 @@ def check_retraining_status(retraining_id: int, conn: Engine):
     with conn.connect() as con:
         query = sqlalchemy.text(
             """
-            SELECT cancel
+            SELECT status
             FROM public.retraining_log
             WHERE id = :id
             """)
@@ -14,4 +14,4 @@ def check_retraining_status(retraining_id: int, conn: Engine):
         rs = con.execute(query, id=retraining_id)
         for row in rs:
             cancel = row[0]
-    return cancel
+    return cancel == 'canceling'

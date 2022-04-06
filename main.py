@@ -546,7 +546,7 @@ def training(vitek_id: int, table_report: pd.DataFrame, retraining_id: int):
             query = sqlalchemy.text(
                 """
                 UPDATE public.retraining_log
-                SET start_date=:date, status='cancel' , finish_date=:date, time=0, cancel=true
+                SET start_date=:date, status='cancel' , finish_date=:date, time=0
                 WHERE id = :id
                 """)
             con.execute(query, date=date, id=retraining_id)
@@ -576,7 +576,7 @@ def training(vitek_id: int, table_report: pd.DataFrame, retraining_id: int):
             query = sqlalchemy.text(
                 """
                 UPDATE public.retraining_log
-                SET status='cancel' , finish_date=:finish_date, time=:time, cancel=true
+                SET status='cancel' , finish_date=:finish_date, time=:time
                 WHERE id = :id
                 """)
             con.execute(query, finish_date=finish_date,
@@ -605,7 +605,7 @@ def add_retraining_log(vitek_id: int, file_id_list: list):
     with conn.connect() as con:
         query = sqlalchemy.text(
             """INSERT INTO public.retraining_log(vitek_id, status , cancel)
-            VALUES (:vitek_id, 'pending' , false)
+            VALUES (:vitek_id, 'pending' , true)
             RETURNING id;
             """)
         rs = con.execute(query, vitek_id=vitek_id)
@@ -1033,7 +1033,7 @@ def dashboard_performance_by_version(vitek_id, version):
             WHERE mg.vitek_id = :vitek_id AND mg.version = :version
             ORDER BY public.antimicrobial_answer.name
         """)
-    
+
     query_current = sqlalchemy.text(
         """ SELECT 
             anti_answer.name, m_group.version, model_current.accuracy , model_current.precision , model_current.recall , model_current.f1, '-' as performance, m_group.model_group_id
@@ -1065,8 +1065,9 @@ def dashboard_performance_by_version(vitek_id, version):
 
     params = {"vitek_id": vitek_id, "version": version}
     if int(version) == 0:
-        performance = pd.read_sql_query(query_current, conn, params={"vitek_id": vitek_id})
-    else:    
+        performance = pd.read_sql_query(
+            query_current, conn, params={"vitek_id": vitek_id})
+    else:
         performance = pd.read_sql_query(query, conn, params=params)
     test_by_case = pd.read_sql_query(query_test_by_case, conn, params=params)
     performance = performance.append(test_by_case)
@@ -1204,12 +1205,16 @@ def cancel_retraining(retraining_id: int):
         }
 
     retrains = retrains.set_index("id")
-    if not retrains.loc[retraining_id, "cancel"]:
+    if retrains.loc[retraining_id, "cancel"]:
         with conn.connect() as con:
             query = sqlalchemy.text(
-                "UPDATE public.retraining_log SET cancel = true WHERE id = :id;")
+                "UPDATE public.retraining_log SET status = 'canceling' , cancel = false WHERE id = :id;")
             con.execute(query, id=retraining_id)
-
-    return {
-        "status": "success",
-    }
+        return {
+            "status": "success",
+        }
+    else:
+        return {
+            "status": "fail",
+            "message" : "ตอนนี้ไม่สามารถยกเลิกการเทรนโมเดลได้"
+        }
