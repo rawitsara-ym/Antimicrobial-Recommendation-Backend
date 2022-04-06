@@ -670,7 +670,7 @@ def model_retraining(background_tasks: BackgroundTasks):
 				                                WHERE vitek_id = :v_id)
         """)
     count_training = 0
-    table_copy = copy.copy(table_csv)
+    table_copy = {"GN": copy.copy(table_csv["GN"]), "GP": copy.copy(table_csv["GP"])}
     for vitek_id in [1, 2]:
         vitek = ["GN", "GP"][vitek_id - 1]
         file_id_list = list(pd.read_sql_query(file_query, conn, params={
