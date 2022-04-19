@@ -4,10 +4,10 @@ def cleanSubmittedSample(sample: str):
     # special case
     if sample == 'unk' or sample == '':
         return 'unknown'
-    if 'opened wound' in sample:
-        return 'open wound'
+    if 'open wound' in sample:
+        return 'opened wound'
     if 'bited wound' in sample:
-        return 'bited wound'
+        return 'bite wound'
 
     # ตัดวงเล็บ, /, at, or
     cut_list1 = ["(", "/", '@', ' at ', ' or ']

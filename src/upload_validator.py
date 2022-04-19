@@ -2,6 +2,7 @@ import pandas as pd
 
 import itertools
 
+from src.utility import cleanSubmittedSample
 
 class UploadValidator:
     ROW_MINIMUN = 300
@@ -152,6 +153,9 @@ class UploadValidator:
             old_value = set(row for row in self.db.table[chk].values)
 
             input_value = set(row for row in df[chk].values)
+            
+            if chk == "submitted_sample":
+                input_value = set(cleanSubmittedSample(row) for row in input_value)
 
             new_value = input_value - old_value
 

@@ -68,9 +68,9 @@ class ModelRetraining:
         for anti_id, anti_name in self.get_antimicrobial_ans().items():
             # Train & Test
             train, test = self.get_train_test(anti_id)
-            X_train = train[["species", "submitted_sample", "bacteria_genus"] +
-                            list(train.columns[train.columns.str.startswith("S/I/R_")])]
-            X_test = test[["species", "submitted_sample", "bacteria_genus"] +
+            X_train = train[["species", "bacteria_genus", "submitted_sample"] +
+                        list(train.columns[train.columns.str.startswith("S/I/R_")])]
+            X_test = test[["species", "bacteria_genus", "submitted_sample"] +
                           list(test.columns[test.columns.str.startswith("S/I/R_")])]
             y_train = train["ans_" + anti_name]
             y_test = test["ans_" + anti_name]
@@ -78,17 +78,17 @@ class ModelRetraining:
             # One-Hot
             X_train_dummies = pd.get_dummies(X_train)
             X_test_dummies = self.get_dummies_dataframe_columns(
-                X_train_dummies, pd.get_dummies(X_test))
+                X_train_dummies, X_test)
 
             # Get model config
             model, smote = self.get_model_configuration(anti_id)
-
+            
             # SMOTE
             X_resampling, y_resampling = SMOTERounding(
                 smote).fit_resample(X_train_dummies, y_train)
 
             # Fit model
-            model = model.fit(X_resampling, y_resampling)
+            model.fit(X_resampling, y_resampling)
 
             # Evaluate model
             measure = self.evaluation(X_test_dummies, y_test, model)
@@ -519,6 +519,7 @@ class ModelRetraining:
         config = pd.read_sql_query(query, self.conn, params={
                                    "anti_id": anti_id}).iloc[0]
         model = eval(config["algorithm"])(eval_metric=f1_score,
+                                          tree_method='gpu_hist',
                                           verbosity=0,
                                           use_label_encoder=False,
                                           random_state=int(
@@ -541,5 +542,5 @@ class ModelRetraining:
             "ADASYN": ADASYN
         }
         smote = smote_algo[config["smote"]](
-            random_state=config["smote_random_state"])
+            random_state=int(config["smote_random_state"]))
         return model, smote
