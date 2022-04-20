@@ -519,7 +519,6 @@ class ModelRetraining:
         config = pd.read_sql_query(query, self.conn, params={
                                    "anti_id": anti_id}).iloc[0]
         model = eval(config["algorithm"])(eval_metric=f1_score,
-                                          tree_method='gpu_hist',
                                           verbosity=0,
                                           use_label_encoder=False,
                                           random_state=int(
