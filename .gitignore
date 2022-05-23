@@ -1,6 +1,6 @@
 __pycache__
 .vscode
 .env
-./upload_file/*
-./ml_model/*
+/upload_file/*
+/ml_model/*
 .ipynb
