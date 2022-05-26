@@ -923,7 +923,7 @@ def dashboard_submitted_sample(vitek_id, version):
 
 
 @app.get("/api/dashboard_antimicrobial_sir")
-def dashboard_antimicrobial_answer(vitek_id, version):
+def dashboard_antimicrobial_sir(vitek_id, version):
     query = sqlalchemy.text(
         """ SELECT public.antimicrobial_sir.name,
 	            COUNT(CASE WHEN public.sir_sub_type.id=1 THEN 1 END) as "POS",
