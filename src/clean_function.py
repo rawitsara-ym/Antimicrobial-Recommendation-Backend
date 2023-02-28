@@ -104,3 +104,23 @@ def cleanSubmittedSample(sample: str, vitek_id: str):
             return submitted_sample
 
     return 'other'
+
+def cleanSubmittedSampleCategory(sample: str, vitek_id: str):
+    submitted_sample_list_gp = eval(open(
+        "./ml_model/schema/submitted_sample_binning_gp.txt", 'r', encoding='utf-8').read())
+    submitted_sample_list_gn = eval(open(
+        "./ml_model/schema/submitted_sample_binning_gn.txt", 'r', encoding='utf-8').read())
+    sample = sample.lower().strip()
+    vitek_id = vitek_id.lower().strip()
+    
+    # clean
+    if vitek_id == 'gp':
+        startswith_list = submitted_sample_list_gp
+    else:
+        startswith_list = submitted_sample_list_gn
+
+    for submitted_sample in startswith_list:
+        if sample.startswith(submitted_sample):
+            return submitted_sample
+
+    return 'xxrare'

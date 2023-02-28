@@ -29,13 +29,13 @@ async def predict(petDetail: PetDetail):
 
     species = cleanSpecies(petDetail.species)
     bact_genus = cleanBactGenus(petDetail.bact_species)
-    submitted_sample = cleanSubmittedSample(petDetail.submitted_sample, petDetail.vitek_id)
+    submitted_sample = cleanSubmittedSampleCategory(petDetail.submitted_sample, petDetail.vitek_id)
     vitek_id = petDetail.vitek_id.upper().strip()
     
     data = dict()
     data['species'] = species
-    data['bact_genus'] = bact_genus
-    data['submitted_sample'] = submitted_sample
+    data['bacteria_genus'] = bact_genus
+    data['submitted_sample_category'] = submitted_sample
     data['vitek_id'] = vitek_id
     for key, value in petDetail.sir.items():
         data[f'S/I/R_{key.lower()}'] = cleanSIR(value)
