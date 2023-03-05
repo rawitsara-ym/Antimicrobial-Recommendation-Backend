@@ -4,8 +4,9 @@ from typing import Dict
 from fastapi import FastAPI
 from pydantic import BaseModel
 import pandas as pd
-
+from fastapi.middleware.cors import CORSMiddleware
 # import time
+
 
 class PetDetail(BaseModel):
     species: str
@@ -18,10 +19,18 @@ class PetDetail(BaseModel):
 app = FastAPI()
 prediction = predictor()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # @app.get("/")
 # async def root():
 #     return {"message": "Hello World"}
+
 
 @app.post("/api/predict/")
 async def predict(petDetail: PetDetail):
@@ -29,9 +38,10 @@ async def predict(petDetail: PetDetail):
 
     species = cleanSpecies(petDetail.species)
     bact_genus = cleanBactGenus(petDetail.bact_species)
-    submitted_sample = cleanSubmittedSampleCategory(petDetail.submitted_sample, petDetail.vitek_id)
+    submitted_sample = cleanSubmittedSampleCategory(
+        petDetail.submitted_sample, petDetail.vitek_id)
     vitek_id = petDetail.vitek_id.upper().strip()
-    
+
     data = dict()
     data['species'] = species
     data['bacteria_genus'] = bact_genus
@@ -39,14 +49,15 @@ async def predict(petDetail: PetDetail):
     data['vitek_id'] = vitek_id
     for key, value in petDetail.sir.items():
         data[f'S/I/R_{key.lower()}'] = cleanSIR(value)
-     
-    # predict answer   
+
+    # predict answer
     result = prediction(pd.Series(data))
-    
+
     # end_time = time.time()
 
     # return {'answer': result,'processing_time' : (end_time - start_time)}
     return {'answer': result}
+
 
 @app.get("/api/version/")
 async def getVersion():
