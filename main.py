@@ -47,3 +47,7 @@ async def predict(petDetail: PetDetail):
 
     # return {'answer': result,'processing_time' : (end_time - start_time)}
     return {'answer': result}
+
+@app.get("/api/version/")
+async def getVersion():
+    return {'version': "1.0"}
